@@ -66,6 +66,9 @@ struct LibraryView: View {
                 viewModel.loadInstalledModules(wrapper: wrapper, category: category)
             }
         }
+        .onChange(of: wrapper.engineVersion) { _ in
+            viewModel.loadInstalledModules(wrapper: wrapper, category: category)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

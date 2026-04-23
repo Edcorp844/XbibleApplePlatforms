@@ -85,6 +85,13 @@ struct ContentView: View {
                 }
             }
         }
+        .onChange(of: wrapper.engineVersion) { _ in
+            if wrapper.isReady {
+                withAnimation(.spring()) {
+                    updateInstalledCategories()
+                }
+            }
+        }
     }
     
     // MARK: - Logic

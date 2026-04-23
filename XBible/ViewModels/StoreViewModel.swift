@@ -23,28 +23,29 @@ class StoreViewModel: ObservableObject {
     // Tracking individual module states
     @Published var installationStates: [String: InstallationStatus] = [:]
     
-    private let taskManager = StoreTaskManager()
+    private var taskManager: StoreTaskManager?
     private var cancellables = Set<AnyCancellable>()
     private var engine: BibleEngine?
     private var modelContext: ModelContext?
     
-    init() {
+    func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
+        // Prevent redundant setup if already configured
+        if self.taskManager != nil { 
+            syncAllInstallationStatuses()
+            return 
+        }
+        
+        self.modelContext = modelContext
+        
+        // Use management engine for store operations
+        guard let engine = wrapper.managementEngine else { return }
+        self.engine = engine
+        
+        // Use persistent task manager from wrapper
+        self.taskManager = wrapper.storeTaskManager
         setupMessageListeners()
         
-        // Listen for global installation changes (e.g. from LibraryView)
-        NotificationCenter.default.publisher(for: .installationStateChanged)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.syncAllInstallationStatuses()
-            }
-            .store(in: &cancellables)
-    }
-    
-    func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
-        self.modelContext = modelContext
-        guard let engine = wrapper.engine else { return }
-        self.engine = engine
-        taskManager.setup(modelContext: modelContext, engine: engine)
+        taskManager?.setup(modelContext: modelContext, engine: engine)
         
         // Sync pending installations into the UI dictionary immediately
         let descriptor = SwiftData.FetchDescriptor<PendingInstallation>()
@@ -53,9 +54,22 @@ class StoreViewModel: ObservableObject {
                 installationStates[item.moduleName] = .pending
             }
         }
+        
+        // Initial sync
+        syncAllInstallationStatuses()
     }
     
     private func setupMessageListeners() {
+        guard let taskManager = taskManager else { return }
+        
+        // Listen for global installation changes (e.g. from LibraryView)
+        NotificationCenter.default.publisher(for: .installationStateChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.syncAllInstallationStatuses()
+            }
+            .store(in: &cancellables)
+            
         // Listen for all messages from the background task manager on the main thread
         taskManager.messages
             .receive(on: DispatchQueue.main)
@@ -125,18 +139,31 @@ class StoreViewModel: ObservableObject {
     /// Syncs the internal state with the engine's reality for all fetched modules
     func syncAllInstallationStatuses() {
         guard let engine = engine else { return }
+        let modules = remoteModules
         
-        // We do this on the main thread but it's fast enough for the store list
-        for m in remoteModules {
-            if engine.isModuleInstalled(moduleName: m.name) {
-                installationStates[m.name] = .installed
-            } else if installationStates[m.name] == nil || installationStates[m.name] == .installed {
-                // If the engine says no, and we thought yes or nothing, set to idle
-                // (Unless it's currently installing/pending)
-                if case .installing = installationStates[m.name] {}
-                else if case .pending = installationStates[m.name] {}
-                else {
-                    installationStates[m.name] = .idle
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var newStates: [String: InstallationStatus] = [:]
+            
+            for m in modules {
+                if engine.isModuleInstalled(moduleName: m.name) {
+                    newStates[m.name] = .installed
+                }
+            }
+            
+            DispatchQueue.main.async {
+                // Merge new states into existing ones (preserve active tasks)
+                for (name, status) in newStates {
+                    self?.installationStates[name] = status
+                }
+                
+                // For modules not in newStates, if we thought they were installed, set to idle
+                // (Only if not currently busy)
+                for (name, currentStatus) in self?.installationStates ?? [:] {
+                    if currentStatus == .installed && newStates[name] == nil {
+                        self?.installationStates[name] = .idle
+                    } else if currentStatus == .idle && newStates[name] == nil {
+                        // Already idle, keep it
+                    }
                 }
             }
         }
@@ -150,25 +177,25 @@ class StoreViewModel: ObservableObject {
     }
 
     func loadStore(wrapper: SwordEngineWrapper) {
-        guard let engine = wrapper.engine else { return }
+        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
         taskManager.fetchSources(engine: engine)
         fetchModules(wrapper: wrapper, source: selectedSource)
     }
 
     func fetchModules(wrapper: SwordEngineWrapper, source: String) {
-        guard let engine = wrapper.engine else { return }
+        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
         self.selectedSource = source
         taskManager.fetchModules(engine: engine, source: source)
     }
     
     func refreshModules(wrapper: SwordEngineWrapper, source: String) {
-        guard let engine = wrapper.engine else { return }
+        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
         self.selectedSource = source
         taskManager.refreshModules(engine: engine, source: source)
     }
 
     func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
-        guard let engine = wrapper.engine else { return }
+        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
         
         // Update UI state immediately to .pending for instant feedback
         installationStates[module.name] = .pending
@@ -178,10 +205,10 @@ class StoreViewModel: ObservableObject {
     }
     
     func cancelInstall(module: XbibleEngine.SwordModule) {
-        taskManager.cancelInstallation(moduleName: module.name)
+        taskManager?.cancelInstallation(moduleName: module.name)
     }
 
     func cancelInstallation(moduleName: String) {
-        taskManager.cancelInstallation(moduleName: moduleName)
+        taskManager?.cancelInstallation(moduleName: moduleName)
     }
 }

@@ -11,12 +11,48 @@ import Combine
 
 class SwordEngineWrapper: ObservableObject {
     // The actual Rust engine instance
+    // Reading engine for Study View
     @Published var engine: BibleEngine?
+    
+    // Management engine for Store and installations
+    @Published var managementEngine: BibleEngine?
+    
+    // Persistent task manager to cache catalog and manage background tasks
+    var storeTaskManager = StoreTaskManager()
+    
     @Published var isReady = false
     @Published var errorMessage: String?
     
+    // Track engine version to trigger UI refreshes without requiring BibleEngine to be Equatable
+    @Published var engineVersion = 0
+    
+    private var cancellables = Set<AnyCancellable>()
+    
     init() {
         setupEngine()
+        setupNotificationListeners()
+    }
+    
+    private func setupNotificationListeners() {
+        NotificationCenter.default.publisher(for: .installationStateChanged)
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main) // Batch multiple updates
+            .sink { [weak self] _ in
+                self?.refreshReadingEngine()
+            }
+            .store(in: &cancellables)
+    }
+    
+    func refreshReadingEngine() {
+        // Re-initialize only the reading engine to pick up new modules
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let newReadingEngine = BibleEngine()
+            DispatchQueue.main.async {
+                self?.engine = newReadingEngine
+                self?.engineVersion += 1 // Trigger observers
+                // Triggering a change notification for observers
+                self?.objectWillChange.send()
+            }
+        }
     }
     
     func setupEngine() {
@@ -24,11 +60,12 @@ class SwordEngineWrapper: ObservableObject {
         // SWORD initialization (which can be slow)
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let newEngine = BibleEngine()
-                let remote = newEngine.getRemoteSourcesWithDetails()
-                print("modules : \(remote.count)")
+                let readingEngine = BibleEngine()
+                let mgmtEngine = BibleEngine()
+                
                 DispatchQueue.main.async {
-                    self.engine = newEngine
+                    self.engine = readingEngine
+                    self.managementEngine = mgmtEngine
                     self.isReady = true
                 }
             } catch {

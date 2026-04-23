@@ -65,7 +65,7 @@ struct StudyView: View {
             ToolbarItemGroup(placement: .navigation) {
                 
                 // 1. Module Selection
-                PopoverButton(label: selectedModule, icon: "book.fill", isPresented: $showModulePicker) {
+                PopoverButton(label: selectedModule, isPresented: $showModulePicker) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Bible Versions").font(.headline).padding(.bottom, 8)
                         ForEach(availableModules, id: \.name) { module in
@@ -78,9 +78,8 @@ struct StudyView: View {
                     .padding()
                     .frame(width: 220)
                 }
-
                 // 2. Book Selection (Grid)
-                PopoverButton(label: selectedBook, icon: "text.book.closed.fill", isPresented: $showBookPicker) {
+                PopoverButton(label: selectedBook, isPresented: $showBookPicker) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Select Book").font(.headline)
                         ScrollView {
@@ -99,7 +98,7 @@ struct StudyView: View {
                 }
 
                 // 3. Chapter Selection (Number Grid)
-                PopoverButton(label: "\(selectedChapter)", icon: "number", isPresented: $showChapterPicker) {
+                PopoverButton(label: "\(selectedChapter)", isPresented: $showChapterPicker) {
                     chapterPickerContent
                 }
             }
@@ -110,6 +109,7 @@ struct StudyView: View {
             loadContent() 
         }
         .onChange(of: selectedChapter) { _ in loadContent() }
+        .onChange(of: wrapper.engineVersion) { _ in initializeData() }
     }
     
     // --- UI HELPERS ---
@@ -212,14 +212,12 @@ struct StudyView: View {
 
 struct PopoverButton<Content: View>: View {
     let label: String
-    let icon: String
     @Binding var isPresented: Bool
     let content: () -> Content
 
     var body: some View {
         Button(action: { isPresented.toggle() }) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11))
                 Text(label).fontWeight(.medium)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).opacity(0.5)
             }
