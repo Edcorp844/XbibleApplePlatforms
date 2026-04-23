@@ -15,30 +15,48 @@ class LibraryViewModel: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     
-    var organizedModules: [String: [String: [XbibleEngine.SwordModule]]] {
-        let byCategory = Dictionary(grouping: installedModules, by: { $0.category })
-        return byCategory.mapValues { modules in
-            Dictionary(grouping: modules, by: { $0.language })
-        }
+    var modulesByLanguage: [String: [XbibleEngine.SwordModule]] {
+        Dictionary(grouping: installedModules, by: { $0.language })
     }
     
     func loadInstalledModules(wrapper: SwordEngineWrapper, category: SidebarItem? = nil) {
         guard let engine = wrapper.engine else { return }
         
-        isLoading = true
+        DispatchQueue.main.async {
+            self.isLoading = true
+        }
         
-        // Load installed modules on background thread
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let allModules = engine.getAvailableModules()
-            var installed = allModules.filter { engine.isModuleInstalled(moduleName: $0.name) }
+            let loadedModules: [XbibleEngine.SwordModule]
             
-            // Filter by category if specified
-            if let category = category, category != .all {
-                installed = installed.filter { $0.category == category.title }
+            switch category {
+            case .bible:
+                loadedModules = engine.getBibleModules()
+            case .dictionary:
+                loadedModules = engine.getDictionaryModules()
+            case .commentary:
+                loadedModules = engine.getCommentaryModules()
+            case .lexicons:
+                loadedModules = engine.getLexiconModules()
+            case .glossary:
+                loadedModules = engine.getGlossaryModules()
+            case .generalBooks:
+                loadedModules = engine.getBookModules()
+            case .dailyDevotional:
+                loadedModules = engine.getDailyDevotionalModules()
+            case .essays:
+                loadedModules = engine.getEssayModules()
+            case .unorthodox:
+                loadedModules = engine.getAvailableModules().filter { 
+                    engine.isModuleInstalled(moduleName: $0.name) && 
+                    ($0.category.lowercased().contains("unorthodox") || $0.category.lowercased().contains("cult"))
+                }
+            default:
+                loadedModules = engine.getAvailableModules().filter { engine.isModuleInstalled(moduleName: $0.name) }
             }
             
             DispatchQueue.main.async {
-                self?.installedModules = installed
+                self?.installedModules = loadedModules
                 self?.isLoading = false
             }
         }

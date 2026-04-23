@@ -8,6 +8,7 @@
 import SwiftUI
 import XbibleEngine
 import Combine
+import SwiftData
 
 
 class StoreViewModel: ObservableObject {
@@ -27,6 +28,20 @@ class StoreViewModel: ObservableObject {
     
     init() {
         setupMessageListeners()
+    }
+    
+    func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
+        guard let engine = wrapper.engine else { return }
+        taskManager.setup(modelContext: modelContext, engine: engine)
+        
+        // Sync pending installations into the UI dictionary immediately
+        let descriptor = SwiftData.FetchDescriptor<PendingInstallation>()
+        if let pending = try? modelContext.fetch(descriptor) {
+            for item in pending {
+                // Assume pending initially, UI will get progress events when it resumes
+                installationStates[item.moduleName] = .pending
+            }
+        }
     }
     
     private func setupMessageListeners() {
@@ -89,12 +104,15 @@ class StoreViewModel: ObservableObject {
             
         case .installCompleted(let moduleName):
             installationStates[moduleName] = .installed
+            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
             
         case .installFailed(let moduleName):
             installationStates[moduleName] = .idle
+            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
             
         case .installCancelled(let moduleName):
             installationStates[moduleName] = .idle
+            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
         }
     }
 
@@ -123,13 +141,13 @@ class StoreViewModel: ObservableObject {
         taskManager.refreshModules(engine: engine, source: source)
     }
 
-    func install(module: SwordModule, wrapper: SwordEngineWrapper) {
+    func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
         guard let engine = wrapper.engine else { return }
-        let moduleName = module.name
-        
-        if installationStates[moduleName] == .installed { return }
-        
-        taskManager.installModule(engine: engine, source: selectedSource, moduleName: moduleName)
+        taskManager.installModule(engine: engine, source: selectedSource, moduleName: module.name)
+    }
+    
+    func cancelInstall(module: XbibleEngine.SwordModule) {
+        taskManager.cancelInstallation(moduleName: module.name)
     }
 
     func cancelInstallation(moduleName: String) {

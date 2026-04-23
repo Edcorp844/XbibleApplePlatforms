@@ -1,0 +1,61 @@
+{
+  "fill" : {
+    "automatic-gradient" : "display-p3:0.96783,0.68106,0.15130,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill" : "automatic",
+          "image-name" : "sword-svgrepo-com-3.svg",
+          "name" : "sword-svgrepo-com-3",
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -104.953125,
+              -130.203125
+            ]
+          }
+        },
+        {
+          "image-name" : "sword-svgrepo-com-4.svg",
+          "name" : "sword-svgrepo-com-4",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              37.46875,
+              40.90625
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

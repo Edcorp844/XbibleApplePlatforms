@@ -25,5 +25,6 @@ struct XBibleApp: App {
             }
         }
         .environmentObject(engineWrapper)
+        .modelContainer(for: PendingInstallation.self)
     }
 }

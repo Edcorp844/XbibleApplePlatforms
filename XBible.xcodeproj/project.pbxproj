@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		AA6419092F96B05A00B06AA4 /* XbibleEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA6419082F96B05A00B06AA4 /* XbibleEngine */; };
 		AA64190C2F96B50500B06AA4 /* XbibleEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA64190B2F96B50500B06AA4 /* XbibleEngine */; };
+		AA6419542F99A92A00B06AA4 /* XbibleIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = AA6419532F99A92A00B06AA4 /* XbibleIcon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,7 @@
 		AA6418D82F96AF1000B06AA4 /* XBible.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XBible.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA6418E72F96AF1100B06AA4 /* XBibleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XBibleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA6418F12F96AF1100B06AA4 /* XBibleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = XBibleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA6419532F99A92A00B06AA4 /* XbibleIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = XbibleIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -99,6 +101,7 @@
 				AA6418EA2F96AF1100B06AA4 /* XBibleTests */,
 				AA6418F42F96AF1100B06AA4 /* XBibleUITests */,
 				AA6418D92F96AF1000B06AA4 /* Products */,
+				AA6419532F99A92A00B06AA4 /* XbibleIcon.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -237,6 +240,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA6419542F99A92A00B06AA4 /* XbibleIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -417,8 +421,9 @@
 		AA6418FC2F96AF1100B06AA4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = XbibleIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -460,8 +465,9 @@
 		AA6418FD2F96AF1100B06AA4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = XbibleIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;

@@ -10,6 +10,7 @@ import XbibleEngine
 
 struct StoreView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = StoreViewModel()
     
     @State private var selectedCategory: String = "Biblical Texts"
@@ -55,10 +56,10 @@ struct StoreView: View {
                         ForEach(languages.keys.sorted(), id: \.self) { langCode in
                             let modules = languages[langCode] ?? []
                             LanguageSection(
-                                viewModel: viewModel,
                                 langCode: langCode,
                                 count: modules.count,
                                 modules: modules,
+                                bookViewBuilder: bookViewBuilder,
                                 isExpanded: expandedLanguages.contains(langCode),
                                 toggle: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -78,7 +79,10 @@ struct StoreView: View {
         }
         .navigationTitle("Store")
         .navigationSubtitle(viewModel.selectedSource)
-        .onAppear { viewModel.loadStore(wrapper: wrapper) }
+        .onAppear { 
+            viewModel.setup(modelContext: modelContext, wrapper: wrapper)
+            viewModel.loadStore(wrapper: wrapper) 
+        }
         .toolbar {
             sourceToolbarItem
         }
@@ -95,6 +99,28 @@ struct StoreView: View {
             expandedLanguages = Set(allLangCodes)
         }
     }
+
+    private var bookViewBuilder: (XbibleEngine.SwordModule) -> BookCardView {
+        { module in
+            let status = viewModel.installationStates[module.name] ?? .idle
+            return BookCardView(
+                module: module,
+                status: status,
+                showActionButton: true,
+                action: {
+                    if status == .idle || status == .cancelled {
+                        viewModel.install(module: module, wrapper: wrapper)
+                    } else if status == .installed {
+                        print("Open module: \(module.name)")
+                    } else {
+                        viewModel.cancelInstall(module: module)
+                    }
+                }
+            )
+        }
+    }
+
+
 
     // MARK: - Subviews
 
@@ -161,60 +187,6 @@ struct StoreView: View {
 }
 // MARK: - Collapsible Language Section Component
 
-struct LanguageSection: View {
-    @ObservedObject var viewModel: StoreViewModel
-    let langCode: String
-    let count: Int
-    let modules: [XbibleEngine.SwordModule]
-    let isExpanded: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            Button(action: toggle) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Locale.current.localizedString(forLanguageCode: langCode) ?? langCode.uppercased())
-                            .font(.headline)
-                        Text("\(count) \(count == 1 ? "module" : "modules")")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0)) // Animated Chevron
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 20)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Collapsible Content
-            if isExpanded {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 20) {
-                        ForEach(modules, id: \.name) { module in
-                            PhysicalBookView(module: module, viewModel: viewModel)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-            
-            Divider()
-                .padding(.horizontal, 20)
-                .opacity(0.3)
-        }
-    }
-}
 
 #Preview {
     // Create a dummy wrapper

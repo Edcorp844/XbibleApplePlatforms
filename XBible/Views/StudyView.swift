@@ -8,17 +8,20 @@
 import SwiftUI
 import XbibleEngine
 
-typealias BibleSection = XbibleEngine.Section
 
 struct StudyView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
     
     // Selection State
-    @State private var sections: [BibleSection] = []
-    @State private var selectedModule: String = "KJV"
+    @State private var sections: [ModuleSection] = []
+    @State private var selectedModule: String
     @State private var selectedBook: String = "John"
     @State private var selectedChapter: Int = 1
     @State private var searchText: String = ""
+    
+    init(initialModule: String = "KJV") {
+        _selectedModule = State(initialValue: initialModule)
+    }
     
     // Metadata lists from Rust
     @State private var availableModules: [XbibleEngine.SwordModule] = []
@@ -101,8 +104,11 @@ struct StudyView: View {
                 }
             }
         }.backgroundStyle(.clear)
-        .onChange(of: selectedModule) { _ in updateBooks(); loadContent() }
-        .onChange(of: selectedBook) { _ in selectedChapter = 1; loadContent() }
+        .onChange(of: selectedModule) { _ in updateBooks() }
+        .onChange(of: selectedBook) { _ in 
+            selectedChapter = 1
+            loadContent() 
+        }
         .onChange(of: selectedChapter) { _ in loadContent() }
     }
     
@@ -158,27 +164,46 @@ struct StudyView: View {
 
     func initializeData() {
         guard let engine = wrapper.engine else { return }
-        self.availableModules = engine.getAvailableModules()
-        updateBooks()
-        loadContent()
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let modules = engine.getAvailableModules()
+            
+            DispatchQueue.main.async {
+                self.availableModules = modules
+                self.updateBooks()
+            }
+        }
     }
 
     func updateBooks() {
         guard let engine = wrapper.engine else { return }
-        let books = engine.getBooks(moduleName: selectedModule)
-        self.availableBooks = books
-        if !books.contains(where: { $0.name == selectedBook }) {
-            selectedBook = books.first?.name ?? ""
-            selectedChapter = 1
+        let currentModule = selectedModule
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let books = engine.getBooks(moduleName: currentModule)
+            
+            DispatchQueue.main.async {
+                self.availableBooks = books
+                if !books.contains(where: { $0.name == self.selectedBook }) {
+                    self.selectedBook = books.first?.name ?? ""
+                    self.selectedChapter = 1
+                }
+                self.loadContent()
+            }
         }
     }
 
     func loadContent() {
         guard let engine = wrapper.engine, !selectedBook.isEmpty else { return }
+        let currentModule = selectedModule
         let ref = "\(selectedBook) \(selectedChapter)"
-        let results = engine.getChapterContent(moduleName: selectedModule, reference: ref)
-        DispatchQueue.main.async {
-            self.sections = results
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
+            
+            DispatchQueue.main.async {
+                self.sections = results
+            }
         }
     }
 }
