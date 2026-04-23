@@ -103,11 +103,15 @@ struct BookCardView: View {
             Button(action: action) {
                 ZStack {
                     Circle()
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 2)
+                        .stroke(Color.secondary.opacity(0.1), lineWidth: 2)
                     
-                    Image(systemName: "pause.fill")
+                    Circle()
+                        .trim(from: 0, to: 1.0)
+                        .stroke(Color.secondary.opacity(0.2), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 4]))
+                    
+                    Image(systemName: "clock.fill")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
                 .frame(width: 24, height: 24)
             }

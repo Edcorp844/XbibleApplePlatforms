@@ -25,20 +25,31 @@ class StoreViewModel: ObservableObject {
     
     private let taskManager = StoreTaskManager()
     private var cancellables = Set<AnyCancellable>()
+    private var engine: BibleEngine?
+    private var modelContext: ModelContext?
     
     init() {
         setupMessageListeners()
+        
+        // Listen for global installation changes (e.g. from LibraryView)
+        NotificationCenter.default.publisher(for: .installationStateChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.syncAllInstallationStatuses()
+            }
+            .store(in: &cancellables)
     }
     
     func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
+        self.modelContext = modelContext
         guard let engine = wrapper.engine else { return }
+        self.engine = engine
         taskManager.setup(modelContext: modelContext, engine: engine)
         
         // Sync pending installations into the UI dictionary immediately
         let descriptor = SwiftData.FetchDescriptor<PendingInstallation>()
         if let pending = try? modelContext.fetch(descriptor) {
             for item in pending {
-                // Assume pending initially, UI will get progress events when it resumes
                 installationStates[item.moduleName] = .pending
             }
         }
@@ -78,13 +89,7 @@ class StoreViewModel: ObservableObject {
         case .fetchCompleted(let modules):
             remoteModules = modules
             isLoading = false
-            
-            // Update installation states
-            for m in modules {
-                if installationStates[m.name] == nil {
-                    installationStates[m.name] = .idle
-                }
-            }
+            syncAllInstallationStatuses()
             
         case .fetchFailed:
             isLoading = false
@@ -105,6 +110,7 @@ class StoreViewModel: ObservableObject {
         case .installCompleted(let moduleName):
             installationStates[moduleName] = .installed
             NotificationCenter.default.post(name: .installationStateChanged, object: nil)
+            syncAllInstallationStatuses() // Sync everything else too
             
         case .installFailed(let moduleName):
             installationStates[moduleName] = .idle
@@ -113,6 +119,26 @@ class StoreViewModel: ObservableObject {
         case .installCancelled(let moduleName):
             installationStates[moduleName] = .idle
             NotificationCenter.default.post(name: .installationStateChanged, object: nil)
+        }
+    }
+    
+    /// Syncs the internal state with the engine's reality for all fetched modules
+    func syncAllInstallationStatuses() {
+        guard let engine = engine else { return }
+        
+        // We do this on the main thread but it's fast enough for the store list
+        for m in remoteModules {
+            if engine.isModuleInstalled(moduleName: m.name) {
+                installationStates[m.name] = .installed
+            } else if installationStates[m.name] == nil || installationStates[m.name] == .installed {
+                // If the engine says no, and we thought yes or nothing, set to idle
+                // (Unless it's currently installing/pending)
+                if case .installing = installationStates[m.name] {}
+                else if case .pending = installationStates[m.name] {}
+                else {
+                    installationStates[m.name] = .idle
+                }
+            }
         }
     }
 
@@ -143,6 +169,11 @@ class StoreViewModel: ObservableObject {
 
     func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
         guard let engine = wrapper.engine else { return }
+        
+        // Update UI state immediately to .pending for instant feedback
+        installationStates[module.name] = .pending
+        
+        // Pass to task manager - it will handle background installation and already-installed checks
         taskManager.installModule(engine: engine, source: selectedSource, moduleName: module.name)
     }
     

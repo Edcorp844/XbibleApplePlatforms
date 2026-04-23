@@ -2,32 +2,12 @@
 //  StoreTaskManager.swift
 //  XBible
 //
-//  Created by Zoe Brooklyn on 4/22/26.
+//  Created by Zoe Brooklyn on 4/23/26.
 //
-
 import Foundation
 import XbibleEngine
 import Combine
 import SwiftData
-
-extension Notification.Name {
-    static let installationStateChanged = Notification.Name("installationStateChanged")
-}
-
-enum TaskMessage: Equatable {
-    case sourcesUpdated([XbibleEngine.ModuleSource])
-    case sourcesFailed
-    case fetchStarted
-    case fetchProgress(progress: Double, status: String, downloadedBytes: Int64, totalBytes: Int64)
-    case fetchCompleted([XbibleEngine.SwordModule])
-    case fetchFailed
-    
-    case installStarted(moduleName: String)
-    case installProgress(moduleName: String, progress: Double, status: String, downloadedBytes: Int64, totalBytes: Int64)
-    case installCompleted(moduleName: String)
-    case installFailed(moduleName: String)
-    case installCancelled(moduleName: String)
-}
 
 class StoreTaskManager: ObservableObject {
     let messages = PassthroughSubject<TaskMessage, Never>()
@@ -65,7 +45,6 @@ class StoreTaskManager: ObservableObject {
             for item in pending {
                 if !installationQueue.contains(where: { $0.moduleName == item.moduleName }) {
                     installationQueue.append((item.moduleName, item.source))
-                    messages.send(.installStarted(moduleName: item.moduleName))
                 }
             }
             
@@ -147,19 +126,23 @@ class StoreTaskManager: ObservableObject {
     }
     
     func installModule(engine: BibleEngine, source: String, moduleName: String) {
-        // Persist to SwiftData
-        if let context = modelContext {
-            let pending = PendingInstallation(moduleName: moduleName, source: source)
-            context.insert(pending)
-            try? context.save()
-        }
-        
-        if !installationQueue.contains(where: { $0.moduleName == moduleName }) {
-            installationQueue.append((moduleName, source))
-        }
-        
-        if !isProcessingQueue {
-            processNextInstallation(engine: engine)
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Persist to SwiftData on background
+            if let context = self.modelContext {
+                let pending = PendingInstallation(moduleName: moduleName, source: source)
+                context.insert(pending)
+                try? context.save()
+            }
+            
+            if !self.installationQueue.contains(where: { $0.moduleName == moduleName }) {
+                self.installationQueue.append((moduleName, source))
+            }
+            
+            if !self.isProcessingQueue {
+                self.processNextInstallation(engine: engine)
+            }
         }
     }
     
@@ -187,12 +170,24 @@ class StoreTaskManager: ObservableObject {
         queue.async { [weak self] in
             guard let self = self else { return }
             
-            // Start progress polling on background thread with throttled updates
+            // 1. Check if already installed (sequential background check)
+            if engine.isModuleInstalled(moduleName: moduleName) {
+                self.messages.send(.installCompleted(moduleName: moduleName))
+                DispatchQueue.main.async { self.removePendingInstallation(moduleName: moduleName) }
+                
+                if !self.installationQueue.isEmpty && self.installationQueue.first?.moduleName == moduleName {
+                    self.installationQueue.removeFirst()
+                }
+                self.isProcessingQueue = false
+                self.processNextInstallation(engine: engine)
+                return
+            }
+            
+            // 2. Start progress polling if not installed
             var lastUpdate = Date()
             let progressTimer = DispatchSource.makeTimerSource(queue: self.progressQueue)
-            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(300))  // Poll every 300ms
+            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(300))
             progressTimer.setEventHandler {
-                // Throttle updates to not more than every 0.5 seconds
                 if Date().timeIntervalSince(lastUpdate) >= 0.5 {
                     let d = engine.getDownloadProgressDetails()
                     self.messages.send(.installProgress(
@@ -207,7 +202,7 @@ class StoreTaskManager: ObservableObject {
             }
             progressTimer.resume()
             
-            // Install module (heavy operation on background thread)
+            // 3. Install module (heavy operation on background thread)
             let result = engine.installModuleWithProgress(source: source, moduleName: moduleName)
             
             progressTimer.cancel()
