@@ -16,6 +16,14 @@ class StoreViewModel: ObservableObject {
     @Published var availableSources: [XbibleEngine.ModuleSource] = []
     @Published var selectedSource: String = "CrossWire"
     @Published var isLoading = false
+    @Published var searchText: String = "" {
+        didSet {
+            if searchText.isEmpty {
+                globalSearchResults = [:]
+                isSearchingGlobally = false
+            }
+        }
+    }
     
     // Global progress for fetching the catalog
     @Published var globalDownloadDetails: ModuleDownloadDetails?
@@ -23,9 +31,15 @@ class StoreViewModel: ObservableObject {
     // Tracking individual module states
     @Published var installationStates: [String: InstallationStatus] = [:]
     
+    // Global search results from other sources
+    @Published var globalSearchResults: [String: [XbibleEngine.SwordModule]] = [:]
+    @Published var isSearchingGlobally = false
+    
+    private var hasWarmedUp = false
     private var taskManager: StoreTaskManager?
     private var cancellables = Set<AnyCancellable>()
-    private var engine: BibleEngine?
+    private var engine: BibleEngine? // The UI management engine
+    private var backgroundEngine: BibleEngine? // The heavy task engine
     private var modelContext: ModelContext?
     
     func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
@@ -37,9 +51,13 @@ class StoreViewModel: ObservableObject {
         
         self.modelContext = modelContext
         
-        // Use management engine for store operations
+        // Use management engine for quick store operations
         guard let engine = wrapper.managementEngine else { return }
         self.engine = engine
+        
+        // Use background engine for heavy tasks
+        guard let bgEngine = wrapper.backgroundEngine else { return }
+        self.backgroundEngine = bgEngine
         
         // Use persistent task manager from wrapper
         self.taskManager = wrapper.storeTaskManager
@@ -84,6 +102,8 @@ class StoreViewModel: ObservableObject {
         switch message {
         case .sourcesUpdated(let sources):
             availableSources = sources
+            // Start warming up all catalogs in the background for instant search
+            warmUpAllCatalogs()
             
         case .sourcesFailed:
             availableSources = []
@@ -100,10 +120,14 @@ class StoreViewModel: ObservableObject {
                 totalBytes: total
             )
             
-        case .fetchCompleted(let modules):
-            remoteModules = modules
-            isLoading = false
-            syncAllInstallationStatuses()
+        case .fetchCompleted(let source, let modules):
+            if source == selectedSource {
+                remoteModules = modules
+                isLoading = false
+                syncAllInstallationStatuses()
+            } else {
+                handleGlobalSearchFetch(source, modules: modules)
+            }
             
         case .fetchFailed:
             isLoading = false
@@ -139,7 +163,14 @@ class StoreViewModel: ObservableObject {
     /// Syncs the internal state with the engine's reality for all fetched modules
     func syncAllInstallationStatuses() {
         guard let engine = engine else { return }
-        let modules = remoteModules
+        
+        // Collect all modules we are currently showing (local + global search results)
+        var allShownModules = remoteModules
+        for sourceModules in globalSearchResults.values {
+            allShownModules.append(contentsOf: sourceModules)
+        }
+        
+        let modules = allShownModules
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var newStates: [String: InstallationStatus] = [:]
@@ -170,7 +201,12 @@ class StoreViewModel: ObservableObject {
     }
 
     var organizedModules: [String: [String: [XbibleEngine.SwordModule]]] {
-        let byCategory = Dictionary(grouping: remoteModules, by: { $0.category })
+        let filtered = searchText.isEmpty ? remoteModules : remoteModules.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.description.localizedCaseInsensitiveContains(searchText)
+        }
+        
+        let byCategory = Dictionary(grouping: filtered, by: { $0.category })
         return byCategory.mapValues { modules in
             Dictionary(grouping: modules, by: { $0.language })
         }
@@ -185,6 +221,7 @@ class StoreViewModel: ObservableObject {
     func fetchModules(wrapper: SwordEngineWrapper, source: String) {
         guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
         self.selectedSource = source
+        // Use management engine for explicit UI-driven fetches
         taskManager.fetchModules(engine: engine, source: source)
     }
     
@@ -195,13 +232,13 @@ class StoreViewModel: ObservableObject {
     }
 
     func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
-        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
+        guard let bgEngine = wrapper.backgroundEngine, let taskManager = taskManager else { return }
         
         // Update UI state immediately to .pending for instant feedback
         installationStates[module.name] = .pending
         
-        // Pass to task manager - it will handle background installation and already-installed checks
-        taskManager.installModule(engine: engine, source: selectedSource, moduleName: module.name)
+        // Pass to task manager using the BACKGROUND engine
+        taskManager.installModule(engine: bgEngine, source: selectedSource, moduleName: module.name)
     }
     
     func cancelInstall(module: XbibleEngine.SwordModule) {
@@ -210,5 +247,55 @@ class StoreViewModel: ObservableObject {
 
     func cancelInstallation(moduleName: String) {
         taskManager?.cancelInstallation(moduleName: moduleName)
+    }
+    
+    func searchAllSources(wrapper: SwordEngineWrapper) {
+        guard let bgEngine = wrapper.backgroundEngine, let taskManager = taskManager else { return }
+        guard !searchText.isEmpty else { return }
+        
+        isSearchingGlobally = true
+        // Don't clear results entirely, just keep them updating
+        // globalSearchResults = [:] 
+        
+        let otherSources = availableSources.filter { $0.name != selectedSource }
+        
+        for source in otherSources {
+            // Check if we already have it cached from background warming
+            if let modules = taskManager.getCachedModules(source: source.name) {
+                handleGlobalSearchFetch(source.name, modules: modules)
+            }
+            
+            // Trigger fetch on the BACKGROUND engine
+            taskManager.fetchModules(engine: bgEngine, source: source.name, isSilent: true)
+        }
+    }
+    
+    private func warmUpAllCatalogs() {
+        guard let bgEngine = backgroundEngine, let taskManager = taskManager, !hasWarmedUp else { return }
+        hasWarmedUp = true
+        
+        // Fetch everything silently on the BACKGROUND engine
+        let sources = availableSources
+        for (index, source) in sources.enumerated() {
+            let delay = Double(index) * 0.2 // 200ms between each source
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                taskManager.fetchModules(engine: bgEngine, source: source.name, isSilent: true)
+            }
+        }
+    }
+    
+    // We need to update handleTaskMessage to handle these multi-source updates
+    private func handleGlobalSearchFetch(_ source: String, modules: [XbibleEngine.SwordModule]) {
+        let filtered = modules.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.description.localizedCaseInsensitiveContains(searchText)
+        }
+        
+        if !filtered.isEmpty {
+            globalSearchResults[source] = filtered
+        }
+        
+        // If we've processed all sources (or a reasonable amount), stop the spinner
+        // For simplicity, we just keep it updating as they come in
     }
 }

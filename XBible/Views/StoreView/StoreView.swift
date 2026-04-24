@@ -47,39 +47,17 @@ struct StoreView: View {
             
             // 3. Main Content
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    let languages = viewModel.organizedModules[selectedCategory] ?? [:]
-                    
-                    if languages.isEmpty && !viewModel.isLoading {
-                        emptyState
-                    } else {
-                        ForEach(languages.keys.sorted(), id: \.self) { langCode in
-                            let modules = languages[langCode] ?? []
-                            LanguageSection(
-                                langCode: langCode,
-                                count: modules.count,
-                                modules: modules,
-                                bookViewBuilder: bookViewBuilder,
-                                isExpanded: expandedLanguages.contains(langCode),
-                                toggle: {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        if expandedLanguages.contains(langCode) {
-                                            expandedLanguages.remove(langCode)
-                                        } else {
-                                            expandedLanguages.insert(langCode)
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
+                if !viewModel.searchText.isEmpty {
+                    searchResultsContent
+                } else {
+                    mainCatalogContent
                 }
-                .padding(.vertical, 20)
             }
         }
         .navigationTitle("Store")
         .navigationSubtitle(viewModel.selectedSource)
-        .onAppear { 
+        .searchable(text: $viewModel.searchText, prompt: "Search for bibles, commentaries, cults...")
+        .onAppear {
             viewModel.setup(modelContext: modelContext, wrapper: wrapper)
             viewModel.loadStore(wrapper: wrapper) 
         }
@@ -180,8 +158,108 @@ struct StoreView: View {
         }
     }
 
+    private var mainCatalogContent: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            let languages = viewModel.organizedModules[selectedCategory] ?? [:]
+            
+            if languages.isEmpty && !viewModel.isLoading {
+                emptyState
+            } else {
+                ForEach(languages.keys.sorted(), id: \.self) { langCode in
+                    let modules = languages[langCode] ?? []
+                    LanguageSection(
+                        langCode: langCode,
+                        count: modules.count,
+                        modules: modules,
+                        bookViewBuilder: bookViewBuilder,
+                        isExpanded: expandedLanguages.contains(langCode),
+                        toggle: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                if expandedLanguages.contains(langCode) {
+                                    expandedLanguages.remove(langCode)
+                                } else {
+                                    expandedLanguages.insert(langCode)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 20)
+    }
+
+    private var searchResultsContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Results from current source
+            let localResults = viewModel.organizedModules.values.flatMap { $0.values }.flatMap { $0 }
+            
+            if !localResults.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("From \(viewModel.selectedSource)")
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                    
+                    ForEach(localResults, id: \.name) { module in
+                        bookViewBuilder(module)
+                            .padding(.horizontal, 20)
+                    }
+                }
+            }
+            
+            // 2. Global Search Button
+            if !viewModel.isSearchingGlobally {
+                Button {
+                    viewModel.searchAllSources(wrapper: wrapper)
+                } label: {
+                    HStack {
+                        Image(systemName: "globe")
+                        Text("Search in all repositories")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                    }
+                    .padding()
+                    .background(Color.accentColor.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+            } else {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Searching other repositories...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 20)
+            }
+            
+            // 3. Results from other sources
+            ForEach(viewModel.globalSearchResults.keys.sorted(), id: \.self) { sourceName in
+                let modules = viewModel.globalSearchResults[sourceName] ?? []
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("From \(sourceName)")
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                    
+                    ForEach(modules, id: \.name) { module in
+                        bookViewBuilder(module)
+                            .padding(.horizontal, 20)
+                    }
+                }
+            }
+            
+            if localResults.isEmpty && viewModel.globalSearchResults.isEmpty && !viewModel.isSearchingGlobally {
+                emptyState
+            }
+        }
+        .padding(.vertical, 20)
+    }
+
+    
     private var emptyState: some View {
-        ContentUnavailableView("No Modules", systemImage: "magnifyingglass")
+        ContentUnavailableView("No Modules Found", systemImage: "magnifyingglass")
             .padding(.top, 100)
     }
 }

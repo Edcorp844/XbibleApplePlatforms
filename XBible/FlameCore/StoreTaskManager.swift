@@ -14,7 +14,7 @@ class StoreTaskManager: ObservableObject {
     
     private let queue = DispatchQueue(label: "com.xbible.store-task-manager", qos: .background)
     private let progressQueue = DispatchQueue(label: "com.xbible.store-task-manager.progress", qos: .utility)
-    private var isFetching = false
+    private var fetchingSources = Set<String>()
     private var modelContext: ModelContext?
     
     // Changed queue to store tuples of (moduleName, source)
@@ -77,16 +77,18 @@ class StoreTaskManager: ObservableObject {
         }
     }
     
-    func fetchModules(engine: BibleEngine, source: String) {
-        guard !isFetching else { return }
+    func fetchModules(engine: BibleEngine, source: String, isSilent: Bool = false) {
+        guard !fetchingSources.contains(source) else { return }
         
         if let cached = cachedModules[source] {
-            messages.send(.fetchCompleted(cached))
+            messages.send(.fetchCompleted(source: source, modules: cached))
             return
         }
         
-        isFetching = true
-        messages.send(.fetchStarted)
+        fetchingSources.insert(source)
+        if !isSilent {
+            messages.send(.fetchStarted)
+        }
         
         queue.async { [weak self] in
             guard let self = self else { return }
@@ -100,12 +102,14 @@ class StoreTaskManager: ObservableObject {
                 }
                 self.lastProgressUpdate = now
                 let d = engine.getDownloadProgressDetails()
-                self.messages.send(.fetchProgress(
-                    progress: d.progress,
-                    status: d.status,
-                    downloadedBytes: d.downloadedBytes,
-                    totalBytes: d.totalBytes
-                ))
+                if !isSilent {
+                    self.messages.send(.fetchProgress(
+                        progress: d.progress,
+                        status: d.status,
+                        downloadedBytes: d.downloadedBytes,
+                        totalBytes: d.totalBytes
+                    ))
+                }
             }
             progressTimer.resume()
             
@@ -114,9 +118,13 @@ class StoreTaskManager: ObservableObject {
             progressTimer.cancel()
             
             self.cachedModules[source] = modules
-            self.messages.send(.fetchCompleted(modules))
-            self.isFetching = false
+            self.messages.send(.fetchCompleted(source: source, modules: modules))
+            self.fetchingSources.remove(source)
         }
+    }
+    
+    func getCachedModules(source: String) -> [XbibleEngine.SwordModule]? {
+        return cachedModules[source]
     }
     
     func refreshModules(engine: BibleEngine, source: String) {

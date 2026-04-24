@@ -68,10 +68,14 @@ struct StudyView: View {
                 PopoverButton(label: selectedModule, isPresented: $showModulePicker) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Bible Versions").font(.headline).padding(.bottom, 8)
-                        ForEach(availableModules, id: \.name) { module in
-                            selectionRow(module.name, isSelected: selectedModule == module.name) {
-                                selectedModule = module.name
-                                showModulePicker = false
+                        ScrollView{
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
+                                ForEach(availableModules, id: \.name) { module in
+                                    moduleSelectionRow(module.name, language: module.language, isSelected: selectedModule == module.name) {
+                                        selectedModule = module.name
+                                        showModulePicker = false
+                                    }
+                                }
                             }
                         }
                     }
@@ -155,7 +159,27 @@ struct StudyView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(isSelected ? Color.accentColor : Color.clear)
                 .contentShape(Rectangle())
-                .cornerRadius(4)
+                .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    func moduleSelectionRow(_ version: String, language: String,isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading){
+                Text(version)
+                Text(language)
+                    .font(.system(.caption))
+                    .foregroundColor(.secondary)
+                    
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? Color.accentColor : Color.clear)
+            .contentShape(Rectangle())
+            .cornerRadius(8)
+            
         }
         .buttonStyle(.plain)
     }

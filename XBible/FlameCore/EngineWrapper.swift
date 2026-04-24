@@ -17,6 +17,10 @@ class SwordEngineWrapper: ObservableObject {
     // Management engine for Store and installations
     @Published var managementEngine: BibleEngine?
     
+    // Background engine for catalog warming and installation tasks
+    // This prevents blocking the UI engines during long network operations
+    @Published var backgroundEngine: BibleEngine?
+    
     // Persistent task manager to cache catalog and manage background tasks
     var storeTaskManager = StoreTaskManager()
     
@@ -62,10 +66,12 @@ class SwordEngineWrapper: ObservableObject {
             do {
                 let readingEngine = BibleEngine()
                 let mgmtEngine = BibleEngine()
+                let bgEngine = BibleEngine()
                 
                 DispatchQueue.main.async {
                     self.engine = readingEngine
                     self.managementEngine = mgmtEngine
+                    self.backgroundEngine = bgEngine
                     self.isReady = true
                 }
             } catch {

@@ -11,7 +11,7 @@ enum TaskMessage: Equatable {
     case sourcesFailed
     case fetchStarted
     case fetchProgress(progress: Double, status: String, downloadedBytes: Int64, totalBytes: Int64)
-    case fetchCompleted([XbibleEngine.SwordModule])
+    case fetchCompleted(source: String, modules: [XbibleEngine.SwordModule])
     case fetchFailed
     
     case installStarted(moduleName: String)
