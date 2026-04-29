@@ -26,7 +26,8 @@ class LibraryViewModel: ObservableObject {
             self.isLoading = true
         }
         
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        wrapper.engineQueue.async { [weak self] in
+            guard let engine = wrapper.engine else { return }
             let loadedModules: [XbibleEngine.SwordModule]
             
             switch category {

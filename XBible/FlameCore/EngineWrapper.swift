@@ -11,21 +11,20 @@ import Combine
 
 class SwordEngineWrapper: ObservableObject {
     // The actual Rust engine instance
-    // Reading engine for Study View
+    // Shared engine instance for the entire app
     @Published var engine: BibleEngine?
-    
-    // Management engine for Store and installations
-    @Published var managementEngine: BibleEngine?
-    
-    // Background engine for catalog warming and installation tasks
-    // This prevents blocking the UI engines during long network operations
-    @Published var backgroundEngine: BibleEngine?
     
     // Persistent task manager to cache catalog and manage background tasks
     var storeTaskManager = StoreTaskManager()
     
+    // Global serial queue for ALL engine FFI calls to ensure library-level thread safety
+    let engineQueue = DispatchQueue(label: "com.xbible.engine-queue", qos: .userInitiated)
+    
     @Published var isReady = false
     @Published var errorMessage: String?
+    
+    private static let initQueue = DispatchQueue(label: "com.xbible.engine-init")
+    private static var isInitializing = false
     
     // Track engine version to trigger UI refreshes without requiring BibleEngine to be Equatable
     @Published var engineVersion = 0
@@ -47,36 +46,35 @@ class SwordEngineWrapper: ObservableObject {
     }
     
     func refreshReadingEngine() {
-        // Re-initialize only the reading engine to pick up new modules
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let newReadingEngine = BibleEngine()
+        // No need to recreate the engine, just refresh its internal module list
+        // if the engine supports it, or we can just trigger a UI refresh.
+        // For SWORD, usually we need to re-scan the mods.d directory.
+        self.engineQueue.async { [weak self] in
+            self?.engine?.refreshInstalledModules()
             DispatchQueue.main.async {
-                self?.engine = newReadingEngine
-                self?.engineVersion += 1 // Trigger observers
-                // Triggering a change notification for observers
+                self?.engineVersion += 1
                 self?.objectWillChange.send()
             }
         }
     }
     
     func setupEngine() {
-        // Run on background thread so the UI doesn't freeze during
-        // SWORD initialization (which can be slow)
-        DispatchQueue.global(qos: .userInitiated).async {
+        SwordEngineWrapper.initQueue.async {
+            guard !SwordEngineWrapper.isInitializing else { return }
+            SwordEngineWrapper.isInitializing = true
+            
             do {
-                let readingEngine = BibleEngine()
-                let mgmtEngine = BibleEngine()
-                let bgEngine = BibleEngine()
+                let sharedEngine = BibleEngine()
                 
                 DispatchQueue.main.async {
-                    self.engine = readingEngine
-                    self.managementEngine = mgmtEngine
-                    self.backgroundEngine = bgEngine
+                    self.engine = sharedEngine
                     self.isReady = true
+                    SwordEngineWrapper.isInitializing = false
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = "Failed to initialize Bible engine."
+                    SwordEngineWrapper.isInitializing = false
                 }
             }
         }

@@ -1,141 +1,98 @@
-//
-//  StoreViewModel.swift
-//  XBible
-//
-//  Created by Zoe Brooklyn on 4/21/26.
-//
-
 import SwiftUI
 import XbibleEngine
 import Combine
 import SwiftData
 
-
+@MainActor
 class StoreViewModel: ObservableObject {
-    @Published var remoteModules: [XbibleEngine.SwordModule] = []
+
+    // MARK: - Published
+
+    /// Modules grouped by source: [SourceName: [Modules]]
+    @Published var allRemoteModules: [String: [XbibleEngine.SwordModule]] = [:]
+    /// List of available repositories (CrossWire, IBT, etc.)
     @Published var availableSources: [XbibleEngine.ModuleSource] = []
-    @Published var selectedSource: String = "CrossWire"
-    @Published var isLoading = false
-    @Published var searchText: String = "" {
-        didSet {
-            if searchText.isEmpty {
-                globalSearchResults = [:]
-                isSearchingGlobally = false
-            }
-        }
-    }
-    
-    // Global progress for fetching the catalog
-    @Published var globalDownloadDetails: ModuleDownloadDetails?
-    
-    // Tracking individual module states
+    /// Tracking the status of every module (idle, installing, installed)
     @Published var installationStates: [String: InstallationStatus] = [:]
-    
-    // Global search results from other sources
-    @Published var globalSearchResults: [String: [XbibleEngine.SwordModule]] = [:]
-    @Published var isSearchingGlobally = false
-    
-    private var hasWarmedUp = false
+    /// Global loading state for the catalog
+    @Published var isLoading = false
+    /// Search filter string
+    @Published var searchText: String = ""
+
+    // MARK: - Private
+
     private var taskManager: StoreTaskManager?
     private var cancellables = Set<AnyCancellable>()
-    private var engine: BibleEngine? // The UI management engine
-    private var backgroundEngine: BibleEngine? // The heavy task engine
+    private var engine: BibleEngine?
     private var modelContext: ModelContext?
-    
-    func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
-        // Prevent redundant setup if already configured
-        if self.taskManager != nil { 
-            syncAllInstallationStatuses()
-            return 
+
+    // MARK: - Computed Properties
+
+    /// Groups all modules across all sources into [Category: [Language: [Modules]]] for the UI
+    var organizedModules: [String: [String: [XbibleEngine.SwordModule]]] {
+        let allModules = allRemoteModules.values.flatMap { $0 }
+
+        if allModules.isEmpty { return [:] }
+
+        let filtered: [XbibleEngine.SwordModule] = searchText.isEmpty ? allModules : allModules.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.description.localizedCaseInsensitiveContains(searchText)
         }
-        
+
+        let byCategory = Dictionary(grouping: filtered, by: { $0.category })
+        return byCategory.mapValues { modules in
+            Dictionary(grouping: modules, by: { $0.language })
+        }
+    }
+
+    // MARK: - Setup
+
+    func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
+        // Prevent double setup if navigating back and forth
+        guard self.engine == nil else {
+            syncAllInstallationStatuses()
+            return
+        }
+
         self.modelContext = modelContext
-        
-        // Use management engine for quick store operations
-        guard let engine = wrapper.managementEngine else { return }
-        self.engine = engine
-        
-        // Use background engine for heavy tasks
-        guard let bgEngine = wrapper.backgroundEngine else { return }
-        self.backgroundEngine = bgEngine
-        
-        // Use persistent task manager from wrapper
+        self.engine = wrapper.engine
         self.taskManager = wrapper.storeTaskManager
+
         setupMessageListeners()
         
-        taskManager?.setup(modelContext: modelContext, engine: engine)
-        
-        // Sync pending installations into the UI dictionary immediately
-        let descriptor = SwiftData.FetchDescriptor<PendingInstallation>()
-        if let pending = try? modelContext.fetch(descriptor) {
-            for item in pending {
-                installationStates[item.moduleName] = .pending
-            }
+        // Ensure the task manager is initialized with the engine and context
+        if let engine = self.engine {
+            taskManager?.setup(modelContext: modelContext, engine: engine, queue: wrapper.engineQueue)
         }
         
-        // Initial sync
-        syncAllInstallationStatuses()
+        loadStore(wrapper: wrapper)
     }
-    
+
     private func setupMessageListeners() {
-        guard let taskManager = taskManager else { return }
-        
-        // Listen for global installation changes (e.g. from LibraryView)
-        NotificationCenter.default.publisher(for: .installationStateChanged)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.syncAllInstallationStatuses()
-            }
-            .store(in: &cancellables)
-            
-        // Listen for all messages from the background task manager on the main thread
-        taskManager.messages
+        taskManager?.messages
             .receive(on: DispatchQueue.main)
             .sink { [weak self] message in
                 self?.handleTaskMessage(message)
             }
             .store(in: &cancellables)
     }
-    
+
+    // MARK: - Message Handling
+
     private func handleTaskMessage(_ message: TaskMessage) {
-        // All updates happen on main thread - UI is never blocked
         switch message {
         case .sourcesUpdated(let sources):
-            availableSources = sources
-            // Start warming up all catalogs in the background for instant search
-            warmUpAllCatalogs()
-            
-        case .sourcesFailed:
-            availableSources = []
-            
-        case .fetchStarted:
-            isLoading = true
-            globalDownloadDetails = nil
-            
-        case .fetchProgress(let progress, let status, let downloaded, let total):
-            globalDownloadDetails = ModuleDownloadDetails(
-                progress: progress,
-                status: status,
-                downloadedBytes: downloaded,
-                totalBytes: total
-            )
-            
+            self.availableSources = sources
+            self.fetchAllSources()
+
         case .fetchCompleted(let source, let modules):
-            if source == selectedSource {
-                remoteModules = modules
-                isLoading = false
-                syncAllInstallationStatuses()
-            } else {
-                handleGlobalSearchFetch(source, modules: modules)
+            self.allRemoteModules[source] = modules
+            // Stop loading once we have data from all sources
+            if allRemoteModules.keys.count >= availableSources.count {
+                self.isLoading = false
             }
-            
-        case .fetchFailed:
-            isLoading = false
-            globalDownloadDetails = nil
-            
-        case .installStarted(let moduleName):
-            installationStates[moduleName] = .pending
-            
+            self.syncAllInstallationStatuses()
+
         case .installProgress(let moduleName, let progress, let status, let downloaded, let total):
             let details = ModuleDownloadDetails(
                 progress: progress,
@@ -143,159 +100,101 @@ class StoreViewModel: ObservableObject {
                 downloadedBytes: downloaded,
                 totalBytes: total
             )
-            installationStates[moduleName] = .installing(details: details)
-            
+            self.installationStates[moduleName] = .installing(details: details)
+
         case .installCompleted(let moduleName):
-            installationStates[moduleName] = .installed
+            self.installationStates[moduleName] = .installed
+            // Notify other parts of the app that the library has changed
             NotificationCenter.default.post(name: .installationStateChanged, object: nil)
-            syncAllInstallationStatuses() // Sync everything else too
+
+        case .installFailed(let moduleName), .installCancelled(let moduleName):
+            self.installationStates[moduleName] = .idle
+            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
             
-        case .installFailed(let moduleName):
-            installationStates[moduleName] = .idle
-            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
-            
-        case .installCancelled(let moduleName):
-            installationStates[moduleName] = .idle
-            NotificationCenter.default.post(name: .installationStateChanged, object: nil)
+        case .fetchFailed(let source):
+            print("Failed to fetch modules for source: \(source)")
+            // Potentially increment count anyway to stop the spinner
+            if allRemoteModules.keys.count >= availableSources.count { self.isLoading = false }
+
+        default:
+            break
         }
     }
-    
-    /// Syncs the internal state with the engine's reality for all fetched modules
-    func syncAllInstallationStatuses() {
+
+    // MARK: - Actions
+
+    /// Initial fetch of the repository list
+    func loadStore(wrapper: SwordEngineWrapper) {
+        guard let engine = wrapper.engine else { return }
+        self.isLoading = true
+        taskManager?.fetchSources(engine: engine)
+    }
+
+    /// Triggers a fresh download of the module catalogs
+    func refreshStore() {
         guard let engine = engine else { return }
+        allRemoteModules.removeAll()
+        isLoading = true
+        taskManager?.fetchSources(engine: engine)
+    }
+
+    /// Installs a module using the background engine to avoid UI hangs
+    func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
+        guard let engine = wrapper.engine, let taskManager = taskManager else { return }
         
-        // Collect all modules we are currently showing (local + global search results)
-        var allShownModules = remoteModules
-        for sourceModules in globalSearchResults.values {
-            allShownModules.append(contentsOf: sourceModules)
-        }
+        // UI feedback: immediately mark as pending
+        installationStates[module.name] = .pending
+        taskManager.installModule(engine: engine, source: module.source, moduleName: module.name)
+    }
+
+    /// Stops an active download/installation
+    func cancelInstall(moduleName: String) {
+        taskManager?.cancelInstallation(moduleName: moduleName)
+        installationStates[moduleName] = .idle
+    }
+
+    /// Batch check against the disk to see what is already installed
+    func syncAllInstallationStatuses() {
+        guard let taskManager = taskManager else { return }
         
-        let modules = allShownModules
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            var newStates: [String: InstallationStatus] = [:]
+        taskManager.refreshInstalledModules { [weak self] installedModules in
+            guard let self = self else { return }
             
-            for m in modules {
-                if engine.isModuleInstalled(moduleName: m.name) {
-                    newStates[m.name] = .installed
-                }
-            }
+            let installedNames = Set(installedModules.map { $0.name })
+            let remoteModules = self.allRemoteModules.values.flatMap { $0 }
             
-            DispatchQueue.main.async {
-                // Merge new states into existing ones (preserve active tasks)
-                for (name, status) in newStates {
-                    self?.installationStates[name] = status
-                }
-                
-                // For modules not in newStates, if we thought they were installed, set to idle
-                // (Only if not currently busy)
-                for (name, currentStatus) in self?.installationStates ?? [:] {
-                    if currentStatus == .installed && newStates[name] == nil {
-                        self?.installationStates[name] = .idle
-                    } else if currentStatus == .idle && newStates[name] == nil {
-                        // Already idle, keep it
+            for module in remoteModules {
+                if installedNames.contains(module.name) {
+                    if self.installationStates[module.name] != .installed {
+                        self.installationStates[module.name] = .installed
+                    }
+                } else {
+                    // If not installed, only reset to idle if we aren't currently installing it or pending
+                    let currentState = self.installationStates[module.name]
+                    if case .installing = currentState { continue }
+                    if currentState == .pending { continue }
+                    
+                    if self.installationStates[module.name] != .idle {
+                        self.installationStates[module.name] = .idle
                     }
                 }
             }
         }
     }
 
-    var organizedModules: [String: [String: [XbibleEngine.SwordModule]]] {
-        let filtered = searchText.isEmpty ? remoteModules : remoteModules.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.description.localizedCaseInsensitiveContains(searchText)
-        }
-        
-        let byCategory = Dictionary(grouping: filtered, by: { $0.category })
-        return byCategory.mapValues { modules in
-            Dictionary(grouping: modules, by: { $0.language })
-        }
-    }
+    // MARK: - Private Helpers
 
-    func loadStore(wrapper: SwordEngineWrapper) {
-        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
-        taskManager.fetchSources(engine: engine)
-        fetchModules(wrapper: wrapper, source: selectedSource)
-    }
+    private func fetchAllSources() {
+        guard let engine = engine, let taskManager = taskManager else { return }
+        
+        if availableSources.isEmpty {
+            self.isLoading = false
+            return
+        }
 
-    func fetchModules(wrapper: SwordEngineWrapper, source: String) {
-        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
-        self.selectedSource = source
-        // Use management engine for explicit UI-driven fetches
-        taskManager.fetchModules(engine: engine, source: source)
-    }
-    
-    func refreshModules(wrapper: SwordEngineWrapper, source: String) {
-        guard let engine = wrapper.managementEngine, let taskManager = taskManager else { return }
-        self.selectedSource = source
-        taskManager.refreshModules(engine: engine, source: source)
-    }
-
-    func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
-        guard let bgEngine = wrapper.backgroundEngine, let taskManager = taskManager else { return }
-        
-        // Update UI state immediately to .pending for instant feedback
-        installationStates[module.name] = .pending
-        
-        // Pass to task manager using the BACKGROUND engine
-        taskManager.installModule(engine: bgEngine, source: selectedSource, moduleName: module.name)
-    }
-    
-    func cancelInstall(module: XbibleEngine.SwordModule) {
-        taskManager?.cancelInstallation(moduleName: module.name)
-    }
-
-    func cancelInstallation(moduleName: String) {
-        taskManager?.cancelInstallation(moduleName: moduleName)
-    }
-    
-    func searchAllSources(wrapper: SwordEngineWrapper) {
-        guard let bgEngine = wrapper.backgroundEngine, let taskManager = taskManager else { return }
-        guard !searchText.isEmpty else { return }
-        
-        isSearchingGlobally = true
-        // Don't clear results entirely, just keep them updating
-        // globalSearchResults = [:] 
-        
-        let otherSources = availableSources.filter { $0.name != selectedSource }
-        
-        for source in otherSources {
-            // Check if we already have it cached from background warming
-            if let modules = taskManager.getCachedModules(source: source.name) {
-                handleGlobalSearchFetch(source.name, modules: modules)
-            }
-            
-            // Trigger fetch on the BACKGROUND engine
-            taskManager.fetchModules(engine: bgEngine, source: source.name, isSilent: true)
+        for source in availableSources {
+            // isSilent: true keeps the UI from flickering while multiple sources load
+            taskManager.fetchModules(engine: engine, source: source.name, isSilent: true)
         }
-    }
-    
-    private func warmUpAllCatalogs() {
-        guard let bgEngine = backgroundEngine, let taskManager = taskManager, !hasWarmedUp else { return }
-        hasWarmedUp = true
-        
-        // Fetch everything silently on the BACKGROUND engine
-        let sources = availableSources
-        for (index, source) in sources.enumerated() {
-            let delay = Double(index) * 0.2 // 200ms between each source
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                taskManager.fetchModules(engine: bgEngine, source: source.name, isSilent: true)
-            }
-        }
-    }
-    
-    // We need to update handleTaskMessage to handle these multi-source updates
-    private func handleGlobalSearchFetch(_ source: String, modules: [XbibleEngine.SwordModule]) {
-        let filtered = modules.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.description.localizedCaseInsensitiveContains(searchText)
-        }
-        
-        if !filtered.isEmpty {
-            globalSearchResults[source] = filtered
-        }
-        
-        // If we've processed all sources (or a reasonable amount), stop the spinner
-        // For simplicity, we just keep it updating as they come in
     }
 }

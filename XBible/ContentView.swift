@@ -109,11 +109,20 @@ struct ContentView: View {
     private func updateInstalledCategories() {
         guard let engine = wrapper.engine else { return }
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        wrapper.engineQueue.async {
             var activeTitles = Set<String>()
             
-            let allInstalled = engine.getAvailableModules().filter { engine.isModuleInstalled(moduleName: $0.name) }
+            // 1. Refresh the engine's internal module list FIRST
+            let installedModules = engine.refreshInstalledModules()
+            let installedNames = Set(installedModules.map { $0.name })
             
+            // 2. Get the list of ALL available modules (now that the engine is refreshed)
+            let allModules = engine.getAvailableModules()
+            
+            // 3. Filter to find which ones are actually installed
+            let allInstalled = allModules.filter { installedNames.contains($0.name) }
+            
+            // 4. Map to titles immediately to release engine-backed objects
             for module in allInstalled {
                 let cat = module.category.lowercased()
                 if cat.contains("bible") { activeTitles.insert(SidebarItem.bible.title) }

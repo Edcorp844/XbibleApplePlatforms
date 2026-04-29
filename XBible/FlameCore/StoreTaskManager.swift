@@ -1,66 +1,57 @@
-//
-//  StoreTaskManager.swift
-//  XBible
-//
-//  Created by Zoe Brooklyn on 4/23/26.
-//
 import Foundation
 import XbibleEngine
 import Combine
 import SwiftData
 
+
+
 class StoreTaskManager: ObservableObject {
     let messages = PassthroughSubject<TaskMessage, Never>()
     
-    private let queue = DispatchQueue(label: "com.xbible.store-task-manager", qos: .background)
-    private let progressQueue = DispatchQueue(label: "com.xbible.store-task-manager.progress", qos: .utility)
-    private var fetchingSources = Set<String>()
+    private var queue = DispatchQueue(label: "com.xbible.store-task-manager", qos: .userInitiated)
+    private let pollQueue = DispatchQueue(label: "com.xbible.store-task-manager.poll", qos: .utility)
+    
     private var modelContext: ModelContext?
+    private var engine: BibleEngine? // Stored for easier access
     
-    // Changed queue to store tuples of (moduleName, source)
-    private var installationQueue: [(moduleName: String, source: String)] = []
-    private var isProcessingQueue = false
-    private var cancelledModules = Set<String>()
+    private var activeTasks: [String: ActiveTask] = [:]
+    private var pollTimer: DispatchSourceTimer?
     
+    private var fetchingSources = Set<String>()
     private var cachedModules: [String: [XbibleEngine.SwordModule]] = [:]
     private var cachedSources: [XbibleEngine.ModuleSource]?
     
-    private var lastProgressUpdate: Date = Date.distantPast
-    private let progressUpdateThrottle: TimeInterval = 0.5  // Only send progress every 0.5 seconds
+    struct ActiveTask {
+        let moduleName: String
+        let source: String
+        let type: TaskType
+    }
     
-    func setup(modelContext: ModelContext, engine: BibleEngine) {
+    enum TaskType {
+        case fetchModules
+        case installModule
+    }
+    
+    func setup(modelContext: ModelContext, engine: BibleEngine, queue: DispatchQueue? = nil) {
+        if let sharedQueue = queue {
+            self.queue = sharedQueue
+        }
         self.modelContext = modelContext
-        
-        // Initialize queue from SwiftData if empty
-        if installationQueue.isEmpty && !isProcessingQueue {
-            resumePendingInstallations(engine: engine)
-        }
+        self.engine = engine
+        resumePendingInstallations()
+        startPolling()
     }
     
-    private func resumePendingInstallations(engine: BibleEngine) {
-        guard let context = modelContext else { return }
-        
-        let descriptor = FetchDescriptor<PendingInstallation>(sortBy: [SortDescriptor(\.addedAt)])
-        if let pending = try? context.fetch(descriptor) {
-            for item in pending {
-                if !installationQueue.contains(where: { $0.moduleName == item.moduleName }) {
-                    installationQueue.append((item.moduleName, item.source))
-                }
-            }
-            
-            if !installationQueue.isEmpty && !isProcessingQueue {
-                processNextInstallation(engine: engine)
-            }
+    private func startPolling() {
+        guard let engine = self.engine else { return }
+        pollTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: pollQueue)
+        timer.schedule(deadline: .now(), repeating: 0.4)
+        timer.setEventHandler { [weak self] in
+            self?.pollActiveTasks(engine: engine)
         }
-    }
-    
-    private func removePendingInstallation(moduleName: String) {
-        guard let context = modelContext else { return }
-        let descriptor = FetchDescriptor<PendingInstallation>(predicate: #Predicate { $0.moduleName == moduleName })
-        if let results = try? context.fetch(descriptor), let match = results.first {
-            context.delete(match)
-            try? context.save()
-        }
+        timer.resume()
+        self.pollTimer = timer
     }
     
     func fetchSources(engine: BibleEngine) {
@@ -70,176 +61,195 @@ class StoreTaskManager: ObservableObject {
         }
         
         queue.async { [weak self] in
-            guard let self = self else { return }
             let sources = engine.getRemoteSourcesWithDetails()
-            self.cachedSources = sources
-            self.messages.send(.sourcesUpdated(sources))
+            self?.cachedSources = sources
+            DispatchQueue.main.async {
+                if sources.isEmpty {
+                    self?.messages.send(.sourcesFailed)
+                } else {
+                    self?.messages.send(.sourcesUpdated(sources))
+                }
+            }
         }
     }
     
     func fetchModules(engine: BibleEngine, source: String, isSilent: Bool = false) {
-        guard !fetchingSources.contains(source) else { return }
-        
-        if let cached = cachedModules[source] {
-            messages.send(.fetchCompleted(source: source, modules: cached))
-            return
-        }
-        
-        fetchingSources.insert(source)
-        if !isSilent {
-            messages.send(.fetchStarted)
-        }
-        
         queue.async { [weak self] in
             guard let self = self else { return }
             
-            let progressTimer = DispatchSource.makeTimerSource(queue: self.progressQueue)
-            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(500))
-            progressTimer.setEventHandler {
-                let now = Date()
-                guard now.timeIntervalSince(self.lastProgressUpdate) >= self.progressUpdateThrottle else {
-                    return
+            if self.fetchingSources.contains(source) { return }
+            
+            if let cached = self.cachedModules[source] {
+                DispatchQueue.main.async {
+                    self.messages.send(.fetchCompleted(source: source, modules: cached))
                 }
-                self.lastProgressUpdate = now
-                let d = engine.getDownloadProgressDetails()
-                if !isSilent {
-                    self.messages.send(.fetchProgress(
-                        progress: d.progress,
-                        status: d.status,
-                        downloadedBytes: d.downloadedBytes,
-                        totalBytes: d.totalBytes
-                    ))
-                }
+                return
             }
-            progressTimer.resume()
             
-            let modules = engine.fetchRemoteModules(sourceName: source)
+            self.fetchingSources.insert(source)
+            DispatchQueue.main.async {
+                if !isSilent { self.messages.send(.fetchStarted) }
+            }
             
-            progressTimer.cancel()
-            
-            self.cachedModules[source] = modules
-            self.messages.send(.fetchCompleted(source: source, modules: modules))
-            self.fetchingSources.remove(source)
+            let taskId = engine.fetchModulesAsync(sourceName: source)
+            self.activeTasks[taskId] = ActiveTask(moduleName: "", source: source, type: .fetchModules)
         }
     }
     
     func getCachedModules(source: String) -> [XbibleEngine.SwordModule]? {
-        return cachedModules[source]
+        // This is a bit tricky if we want total thread safety, but for now we'll return what we have
+        return queue.sync { cachedModules[source] }
     }
     
     func refreshModules(engine: BibleEngine, source: String) {
-        // Force clear cache and fetch again
-        cachedModules.removeValue(forKey: source)
-        fetchModules(engine: engine, source: source)
-    }
-    
-    func installModule(engine: BibleEngine, source: String, moduleName: String) {
         queue.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Persist to SwiftData on background
-            if let context = self.modelContext {
-                let pending = PendingInstallation(moduleName: moduleName, source: source)
-                context.insert(pending)
-                try? context.save()
-            }
-            
-            if !self.installationQueue.contains(where: { $0.moduleName == moduleName }) {
-                self.installationQueue.append((moduleName, source))
-            }
-            
-            if !self.isProcessingQueue {
-                self.processNextInstallation(engine: engine)
-            }
+            self?.cachedModules.removeValue(forKey: source)
+            self?.fetchModules(engine: engine, source: source)
         }
     }
     
-    private func processNextInstallation(engine: BibleEngine) {
-        guard !installationQueue.isEmpty else {
-            isProcessingQueue = false
-            return
-        }
-        
-        if let index = installationQueue.firstIndex(where: { $0.moduleName == cancelledModules.first }) {
-            installationQueue.remove(at: index)
-            if !installationQueue.isEmpty {
-                processNextInstallation(engine: engine)
-            }
-            return
-        }
-        
-        isProcessingQueue = true
-        let task = installationQueue[0]
-        let moduleName = task.moduleName
-        let source = task.source
-        
-        messages.send(.installStarted(moduleName: moduleName))
-        
+    func installModule(engine: BibleEngine, source: String, moduleName: String, skipDatabase: Bool = false) {
         queue.async { [weak self] in
             guard let self = self else { return }
             
-            // 1. Check if already installed (sequential background check)
             if engine.isModuleInstalled(moduleName: moduleName) {
-                self.messages.send(.installCompleted(moduleName: moduleName))
-                DispatchQueue.main.async { self.removePendingInstallation(moduleName: moduleName) }
-                
-                if !self.installationQueue.isEmpty && self.installationQueue.first?.moduleName == moduleName {
-                    self.installationQueue.removeFirst()
+                DispatchQueue.main.async {
+                    if !skipDatabase { self.removePendingInstallation(moduleName: moduleName) }
+                    self.messages.send(.installCompleted(moduleName: moduleName))
                 }
-                self.isProcessingQueue = false
-                self.processNextInstallation(engine: engine)
                 return
             }
             
-            // 2. Start progress polling if not installed
-            var lastUpdate = Date()
-            let progressTimer = DispatchSource.makeTimerSource(queue: self.progressQueue)
-            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(300))
-            progressTimer.setEventHandler {
-                if Date().timeIntervalSince(lastUpdate) >= 0.5 {
-                    let d = engine.getDownloadProgressDetails()
-                    self.messages.send(.installProgress(
-                        moduleName: moduleName,
-                        progress: d.progress,
-                        status: d.status,
-                        downloadedBytes: d.downloadedBytes,
-                        totalBytes: d.totalBytes
-                    ))
-                    lastUpdate = Date()
+            DispatchQueue.main.async {
+                if !skipDatabase {
+                    self.modelContext?.insert(PendingInstallation(moduleName: moduleName, source: source))
+                    try? self.modelContext?.save()
                 }
-            }
-            progressTimer.resume()
-            
-            // 3. Install module (heavy operation on background thread)
-            let result = engine.installModuleWithProgress(source: source, moduleName: moduleName)
-            
-            progressTimer.cancel()
-            
-            // Check if was cancelled
-            if self.cancelledModules.contains(moduleName) {
-                self.messages.send(.installCancelled(moduleName: moduleName))
-                self.cancelledModules.remove(moduleName)
-            } else if result != 0 {
-                self.messages.send(.installCompleted(moduleName: moduleName))
-                DispatchQueue.main.async { self.removePendingInstallation(moduleName: moduleName) }
-            } else {
-                self.messages.send(.installFailed(moduleName: moduleName))
-                DispatchQueue.main.async { self.removePendingInstallation(moduleName: moduleName) }
+                self.messages.send(.installStarted(moduleName: moduleName))
             }
             
-            if !self.installationQueue.isEmpty && self.installationQueue.first?.moduleName == moduleName {
-                self.installationQueue.removeFirst()
+            let taskId = engine.installModuleAsync(source: source, moduleName: moduleName)
+            self.activeTasks[taskId] = ActiveTask(moduleName: moduleName, source: source, type: .installModule)
+        }
+    }
+    
+    func refreshInstalledModules(completion: @escaping ([XbibleEngine.SwordModule]) -> Void) {
+        queue.async { [weak self] in
+            guard let self = self, let engine = self.engine else { return }
+            let modules = engine.refreshInstalledModules()
+            DispatchQueue.main.async {
+                completion(modules)
             }
-            self.isProcessingQueue = false
-            self.processNextInstallation(engine: engine)
         }
     }
     
     func cancelInstallation(moduleName: String) {
-        cancelledModules.insert(moduleName)
-        removePendingInstallation(moduleName: moduleName)
-        if let index = installationQueue.firstIndex(where: { $0.moduleName == moduleName }) {
-            installationQueue.remove(at: index)
+        guard let engine = self.engine else { return }
+        queue.async {
+            if let taskId = self.activeTasks.first(where: { $0.value.moduleName == moduleName })?.key {
+                engine.cancelTask(taskId: taskId)
+                self.activeTasks.removeValue(forKey: taskId)
+            }
+            DispatchQueue.main.async {
+                self.removePendingInstallation(moduleName: moduleName)
+                self.messages.send(.installCancelled(moduleName: moduleName))
+            }
+        }
+    }
+    
+    private func pollActiveTasks(engine: BibleEngine) {
+        // Only poll if we actually have tasks to avoid constant FFI noise
+        guard !activeTasks.isEmpty else { return }
+
+        // Execute polling on the serialized serial queue, NOT the concurrent pollQueue
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            
+            let tasksToPoll = self.activeTasks
+            for (taskId, taskInfo) in tasksToPoll {
+                if let status = self.engine?.getTaskStatus(taskId: taskId) {
+                    switch status.state {
+                    case .running:
+                        self.notifyProgress(taskInfo: taskInfo, status: status)
+                    case .completed:
+                        self.handleSuccess(taskId: taskId, taskInfo: taskInfo)
+                    case .failed(let error):
+                        self.handleFailure(taskId: taskId, taskInfo: taskInfo, error: error)
+                    default: break
+                    }
+                }
+            }
+        }
+    }
+    
+    private func notifyProgress(taskInfo: ActiveTask, status: TaskStatus) {
+        DispatchQueue.main.async {
+            switch taskInfo.type {
+            case .fetchModules:
+                self.messages.send(.fetchProgress(progress: status.progress, status: "Updating catalog...", downloadedBytes: 0, totalBytes: 0))
+            case .installModule:
+                self.messages.send(.installProgress(moduleName: taskInfo.moduleName, progress: status.progress, status: status.message, downloadedBytes: 0, totalBytes: 0))
+            }
+        }
+    }
+    
+    private func handleSuccess(taskId: String, taskInfo: ActiveTask) {
+        // Already on queue.async from pollActiveTasks
+        self.activeTasks.removeValue(forKey: taskId)
+        
+        if taskInfo.type == .fetchModules {
+            let modules = self.engine?.getTaskResultModules(taskId: taskId) ?? []
+            self.cachedModules[taskInfo.source] = modules
+            self.fetchingSources.remove(taskInfo.source)
+            
+            DispatchQueue.main.async {
+                self.messages.send(.fetchCompleted(source: taskInfo.source, modules: modules))
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.removePendingInstallation(moduleName: taskInfo.moduleName)
+                self.messages.send(.installCompleted(moduleName: taskInfo.moduleName))
+            }
+        }
+    }
+    
+    private func handleFailure(taskId: String, taskInfo: ActiveTask, error: String) {
+        // Already on queue.async from pollActiveTasks
+        self.activeTasks.removeValue(forKey: taskId)
+        
+        if taskInfo.type == .fetchModules {
+            self.fetchingSources.remove(taskInfo.source)
+            DispatchQueue.main.async {
+                self.messages.send(.fetchFailed(source: taskInfo.source))
+            }
+        } else {
+            DispatchQueue.main.async {
+                if error.contains("Cancelled") {
+                    self.messages.send(.installCancelled(moduleName: taskInfo.moduleName))
+                } else {
+                    self.messages.send(.installFailed(moduleName: taskInfo.moduleName))
+                }
+                self.removePendingInstallation(moduleName: taskInfo.moduleName)
+            }
+        }
+    }
+    
+    private func resumePendingInstallations() {
+        guard let engine = engine, let context = modelContext else { return }
+        let descriptor = FetchDescriptor<PendingInstallation>(sortBy: [SortDescriptor(\.addedAt)])
+        if let pending = try? context.fetch(descriptor) {
+            for item in pending { 
+                // skipDatabase: true because it's already in the DB
+                self.installModule(engine: engine, source: item.source, moduleName: item.moduleName, skipDatabase: true) 
+            }
+        }
+    }
+    
+    private func removePendingInstallation(moduleName: String) {
+        let descriptor = FetchDescriptor<PendingInstallation>(predicate: #Predicate { $0.moduleName == moduleName })
+        if let results = try? modelContext?.fetch(descriptor), let match = results.first {
+            modelContext?.delete(match)
+            try? modelContext?.save()
         }
     }
 }

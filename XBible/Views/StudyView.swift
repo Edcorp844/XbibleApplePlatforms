@@ -189,7 +189,7 @@ struct StudyView: View {
     func initializeData() {
         guard let engine = wrapper.engine else { return }
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        wrapper.engineQueue.async {
             let modules = engine.getAvailableModules()
             
             DispatchQueue.main.async {
@@ -203,7 +203,7 @@ struct StudyView: View {
         guard let engine = wrapper.engine else { return }
         let currentModule = selectedModule
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        wrapper.engineQueue.async {
             let books = engine.getBooks(moduleName: currentModule)
             
             DispatchQueue.main.async {
@@ -222,7 +222,7 @@ struct StudyView: View {
         let currentModule = selectedModule
         let ref = "\(selectedBook) \(selectedChapter)"
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        wrapper.engineQueue.async {
             let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
             
             DispatchQueue.main.async {
