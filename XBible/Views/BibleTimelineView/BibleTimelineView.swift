@@ -3,74 +3,69 @@ import SwiftUI
 struct BibleTimelineView: View {
     @StateObject private var viewModel = TimelineViewModel()
     @State private var selectedEvent: TimelineEvent?
-    
-    // Tracking the current active year based on scroll
     @State private var activeYear: Int = -4100
     
-    // Layout Constants
     let pixelsPerYear: CGFloat = 1.5
     let rowHeight: CGFloat = 110.0
     let timelineStartYear = -4100
     let timelineEndYear = 2100
-    let horizontalPadding: CGFloat = 60.0
+    // We can remove horizontalPadding now because centerX handles the "dead space"
+    
+    private let timelineSpace = "TimelineCenterSpace"
 
     private var totalWidth: CGFloat {
-        (CGFloat(timelineEndYear - timelineStartYear) * pixelsPerYear) + (horizontalPadding * 2)
+        CGFloat(timelineEndYear - timelineStartYear) * pixelsPerYear
     }
 
     var body: some View {
         NavigationStack {
-            // 1. This GeometryReader detects the VISIBLE area (shrinks when sidebar opens)
-            GeometryReader { timelineAreaGeo in
-                let visibleWidth = timelineAreaGeo.size.width
-                let centerX = visibleWidth / 2
+            GeometryReader { areaGeo in
+                let centerX = areaGeo.size.width / 2
                 
                 ZStack {
-                    // --- THE TIMELINE ---
                     ScrollView(.horizontal, showsIndicators: true) {
+                        // This ZStack contains EVERYTHING that moves
                         ZStack(alignment: .topLeading) {
                             
-                            // 2. This GeometryReader tracks the SCROLL position
+                            // 1. THE TRACKER
                             GeometryReader { scrollGeo in
                                 Color.clear
-                                    .onAppear { updateYear(scrollGeo, centerX: centerX) }
-                                    .onChange(of: scrollGeo.frame(in: .global).minX) { _ in
+                                    .onChange(of: scrollGeo.frame(in: .named(timelineSpace)).minX) { _ in
                                         updateYear(scrollGeo, centerX: centerX)
                                     }
                             }
                             .frame(height: 1)
 
+                            // 2. THE CONTENT (Shifted to start at the Red Line)
                             VStack(alignment: .leading, spacing: 0) {
-                                // 1. Sticky Year Bar
-                                ZStack(alignment: .topLeading) {
-                                    Color(.windowBackgroundColor).opacity(0.95)
-                                    yearLabelsHeader
-                                }
-                                .frame(width: totalWidth, height: 50)
-                                .overlay(Divider(), alignment: .bottom)
-                                .zIndex(1)
+                                // Year Labels
+                                yearLabelsHeader
+                                    .frame(width: totalWidth, height: 50)
+                                    .padding(.leading, centerX) // SHIFTED RIGHT
 
-                                // 2. Events
+                                // Events Vertical Scroll
                                 ScrollView(.vertical, showsIndicators: true) {
                                     ZStack(alignment: .topLeading) {
                                         TimelineBackgroundGrid(startYear: timelineStartYear, pixelsPerYear: pixelsPerYear)
-                                            .offset(x: horizontalPadding)
                                         
                                         if viewModel.isLoading {
-                                            ProgressView()
-                                                .frame(width: visibleWidth)
-                                                .padding(.top, 100)
+                                            ProgressView().frame(width: areaGeo.size.width)
                                         } else {
                                             renderEvents()
                                         }
                                     }
                                     .frame(width: totalWidth, height: 2500)
+                                    .padding(.leading, centerX) // SHIFTED RIGHT
                                 }
                             }
                         }
+                        // Important: Make the total scrollable area wide enough to
+                        // let the end of the timeline reach the center
+                        .frame(width: totalWidth + (centerX * 2))
                     }
+                    .coordinateSpace(name: timelineSpace)
 
-                    // --- CENTRAL FIXED SCRUBBER + ACTIVE YEAR LABEL ---
+                    // 3. THE RED SCRUBBER (Fixed in the absolute center)
                     VStack(spacing: 0) {
                         Text(TimelineUtils.calculateLabel(start: activeYear, end: activeYear))
                             .font(.system(size: 14, weight: .black, design: .monospaced))
@@ -87,47 +82,33 @@ struct BibleTimelineView: View {
                 }
             }
             .navigationTitle("Bible Timeline")
-            .sheet(item: $selectedEvent) { event in
-                EventDetailView(event: event)
-            }
-            .task {
-                await viewModel.loadEvents()
-            }
+            .task { await viewModel.loadEvents() }
         }
     }
 
-    // MARK: - Logic to calculate year from scroll
     private func updateYear(_ proxy: GeometryProxy, centerX: CGFloat) {
-        // We use .global to ensure we are measuring against the screen edge
-        let scrollOffset = proxy.frame(in: .global).minX
+        let scrollOffset = proxy.frame(in: .named(timelineSpace)).minX
         
-        // Use the passed-in centerX which is relative to the current visible width
-        let relativeX = centerX - scrollOffset - horizontalPadding
+        // Since we padded the content by centerX, the math is now:
+        let relativeX = -scrollOffset
         let yearsPassed = Int(relativeX / pixelsPerYear)
         
         var newYear = timelineStartYear + yearsPassed
-        
-        // Handle Year 0 skip (1 BC to 1 AD)
         if newYear >= 0 { newYear += 1 }
         
         let clampedYear = min(max(newYear, timelineStartYear), timelineEndYear)
-        
         if activeYear != clampedYear {
             activeYear = clampedYear
         }
     }
 
-    // MARK: - Components
-    
     private var centerScrubberLine: some View {
         VStack(spacing: 0) {
             Image(systemName: "arrowtriangle.down.fill")
-                .font(.system(size: 14))
                 .foregroundColor(.red)
                 .offset(y: 4)
-            
             Rectangle()
-                .fill(LinearGradient(colors: [.red, .red.opacity(0.1)], startPoint: .top, endPoint: .bottom))
+                .fill(Color.red.opacity(0.3))
                 .frame(width: 2)
                 .frame(maxHeight: .infinity)
         }
@@ -142,7 +123,7 @@ struct BibleTimelineView: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)
                     .position(
-                        x: (CGFloat(year - timelineStartYear) * pixelsPerYear) + horizontalPadding,
+                        x: CGFloat(year - timelineStartYear) * pixelsPerYear,
                         y: 25
                     )
             }
@@ -162,7 +143,7 @@ struct BibleTimelineView: View {
                 }
                 .frame(width: calculatedWidth, height: rowHeight - 10)
                 .position(
-                    x: (CGFloat(event.start - timelineStartYear) * pixelsPerYear) + horizontalPadding + (calculatedWidth / 2),
+                    x: (CGFloat(event.start - timelineStartYear) * pixelsPerYear) + (calculatedWidth / 2),
                     y: (CGFloat(event.row) * rowHeight) + 60
                 )
             }
