@@ -53,7 +53,10 @@ class LibraryViewModel: ObservableObject {
                     ($0.category.lowercased().contains("unorthodox") || $0.category.lowercased().contains("cult"))
                 }
             default:
-                loadedModules = engine.getAvailableModules().filter { engine.isModuleInstalled(moduleName: $0.name) }
+                // Refresh the installed list to ensure we have the latest
+                let installed = engine.refreshInstalledModules()
+                let installedNames = Set(installed.map { $0.name })
+                loadedModules = engine.getAvailableModules().filter { installedNames.contains($0.name) }
             }
             
             DispatchQueue.main.async {

@@ -8,6 +8,7 @@
 import Foundation
 import XbibleEngine
 import Combine
+import SwiftUI
 
 class SwordEngineWrapper: ObservableObject {
     // The actual Rust engine instance
@@ -26,8 +27,16 @@ class SwordEngineWrapper: ObservableObject {
     private static let initQueue = DispatchQueue(label: "com.xbible.engine-init")
     private static var isInitializing = false
     
-    // Track engine version to trigger UI refreshes without requiring BibleEngine to be Equatable
     @Published var engineVersion = 0
+    
+    // Global Navigation & Selection State
+    @Published var selectedSidebarItem: SidebarItem? = .study
+    @Published var selectedModule: String = "KJV"
+    @Published var selectedBook: String = "John"
+    @Published var selectedChapter: Int = 1
+    
+    // Installed categories for the sidebar
+    @Published var installedModuleCategories: Set<String> = []
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -46,16 +55,42 @@ class SwordEngineWrapper: ObservableObject {
     }
     
     func refreshReadingEngine() {
-        // No need to recreate the engine, just refresh its internal module list
-        // if the engine supports it, or we can just trigger a UI refresh.
-        // For SWORD, usually we need to re-scan the mods.d directory.
         self.engineQueue.async { [weak self] in
-            self?.engine?.refreshInstalledModules()
+            guard let self = self, let engine = self.engine else { return }
+            
+            // 1. Refresh the engine's internal module list
+            engine.refreshInstalledModules()
+            
+            // 2. Update active categories
+            var activeTitles = Set<String>()
+            let allModules = engine.getAvailableModules()
+            
+            // Check standard fetchers
+            if !engine.getBibleModules().isEmpty { activeTitles.insert(SidebarItem.bible.title) }
+            if !engine.getCommentaryModules().isEmpty { activeTitles.insert(SidebarItem.commentary.title) }
+            if !engine.getDictionaryModules().isEmpty { activeTitles.insert(SidebarItem.dictionary.title) }
+            if !engine.getLexiconModules().isEmpty { activeTitles.insert(SidebarItem.lexicons.title) }
+            if !engine.getGlossaryModules().isEmpty { activeTitles.insert(SidebarItem.glossary.title) }
+            if !engine.getDailyDevotionalModules().isEmpty { activeTitles.insert(SidebarItem.dailyDevotional.title) }
+            if !engine.getEssayModules().isEmpty { activeTitles.insert(SidebarItem.essays.title) }
+            if !engine.getBookModules().isEmpty { activeTitles.insert(SidebarItem.generalBooks.title) }
+            
             DispatchQueue.main.async {
-                self?.engineVersion += 1
-                self?.objectWillChange.send()
+                withAnimation(.spring()) {
+                    self.installedModuleCategories = activeTitles
+                    self.engineVersion += 1
+                }
             }
         }
+    }
+    
+    func openModuleInStudy(_ module: SwordModule) {
+        self.selectedModule = module.name
+        self.selectedSidebarItem = .study
+        
+        // Reset to first book if necessary, or keep current? 
+        // For now, let's keep current book/chapter if they exist in the new module
+        // StudyView handles this in updateBooks()
     }
     
     func setupEngine() {

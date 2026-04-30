@@ -35,7 +35,7 @@ struct DetailView: View {
         case .unorthodox:
             LibraryView(category: .unorthodox)
         case .bibleTimeline:
-            TimelineView()
+            BibleTimelineView()
         case .audioBible:
             AudioBibleView()
         case .maps:

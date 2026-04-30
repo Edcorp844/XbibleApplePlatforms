@@ -12,20 +12,15 @@ import XbibleEngine
 struct StudyView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
     
-    // Selection State
     @State private var sections: [ModuleSection] = []
-    @State private var selectedModule: String
-    @State private var selectedBook: String = "John"
-    @State private var selectedChapter: Int = 1
     @State private var searchText: String = ""
-    
-    init(initialModule: String = "KJV") {
-        _selectedModule = State(initialValue: initialModule)
-    }
     
     // Metadata lists from Rust
     @State private var availableModules: [XbibleEngine.SwordModule] = []
     @State private var availableBooks: [XbibleEngine.ModuleBook] = []
+    
+    init() { }
+    
     
     // Popover Toggles
     @State private var showModulePicker = false
@@ -33,30 +28,41 @@ struct StudyView: View {
     @State private var showChapterPicker = false
     
     var body: some View {
-        ScrollView {
-            HStack {
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 40) {
-                    ForEach(0..<sections.count, id: \.self) { i in
-                        let section = sections[i]
-                        VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
-                            if !section.title.isEmpty {
-                                FlowLayout(spacing: 8) {
-                                    ForEach(0..<section.title.count, id: \.self) { j in
-                                        WordView(word: section.title[j])
+        ZStack {
+            ScrollView {
+                HStack {
+                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 40) {
+                        ForEach(0..<sections.count, id: \.self) { i in
+                            let section = sections[i]
+                            VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
+                                if !section.title.isEmpty {
+                                    FlowLayout(spacing: 8) {
+                                        ForEach(0..<section.title.count, id: \.self) { j in
+                                            WordView(word: section.title[j])
+                                        }
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .center)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            }
-                            ForEach(section.verses, id: \.osisId) { verse in
-                                VerseView(verse: verse)
+                                ForEach(section.verses, id: \.osisId) { verse in
+                                    VerseView(verse: verse)
+                                }
                             }
                         }
                     }
+                    .padding(40)
+                    .frame(minWidth: 400, maxWidth: 1200)
+                    Spacer(minLength: 0)
                 }
-                .padding(40)
-                .frame(minWidth: 400, maxWidth: 1200)
-                Spacer(minLength: 0)
+            }
+            
+            // Side Navigation Buttons
+            HStack {
+                NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
+                    .padding(.leading, 8)
+                Spacer()
+                NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
+                    .padding(.trailing, 8)
             }
         }
         .onAppear(perform: initializeData)
@@ -65,14 +71,14 @@ struct StudyView: View {
             ToolbarItemGroup(placement: .navigation) {
                 
                 // 1. Module Selection
-                PopoverButton(label: selectedModule, isPresented: $showModulePicker) {
+                PopoverButton(label: wrapper.selectedModule, isPresented: $showModulePicker) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Bible Versions").font(.headline).padding(.bottom, 8)
                         ScrollView{
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
                                 ForEach(availableModules, id: \.name) { module in
-                                    moduleSelectionRow(module.name, language: module.language, isSelected: selectedModule == module.name) {
-                                        selectedModule = module.name
+                                    moduleSelectionRow(module.name, language: module.language, isSelected: wrapper.selectedModule == module.name) {
+                                        wrapper.selectedModule = module.name
                                         showModulePicker = false
                                     }
                                 }
@@ -83,14 +89,14 @@ struct StudyView: View {
                     .frame(width: 220)
                 }
                 // 2. Book Selection (Grid)
-                PopoverButton(label: selectedBook, isPresented: $showBookPicker) {
+                PopoverButton(label: wrapper.selectedBook, isPresented: $showBookPicker) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Select Book").font(.headline)
                         ScrollView {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
                                 ForEach(availableBooks, id: \.name) { book in
-                                    selectionRow(book.name, isSelected: selectedBook == book.name) {
-                                        selectedBook = book.name
+                                    selectionRow(book.name, isSelected: wrapper.selectedBook == book.name) {
+                                        wrapper.selectedBook = book.name
                                         showBookPicker = false
                                     }
                                 }
@@ -102,17 +108,17 @@ struct StudyView: View {
                 }
 
                 // 3. Chapter Selection (Number Grid)
-                PopoverButton(label: "\(selectedChapter)", isPresented: $showChapterPicker) {
+                PopoverButton(label: "\(wrapper.selectedChapter)", isPresented: $showChapterPicker) {
                     chapterPickerContent
                 }
             }
         }.backgroundStyle(.clear)
-        .onChange(of: selectedModule) { _ in updateBooks() }
-        .onChange(of: selectedBook) { _ in 
-            selectedChapter = 1
+        .onChange(of: wrapper.selectedModule) { _ in updateBooks() }
+        .onChange(of: wrapper.selectedBook) { _ in 
+            wrapper.selectedChapter = 1
             loadContent() 
         }
-        .onChange(of: selectedChapter) { _ in loadContent() }
+        .onChange(of: wrapper.selectedChapter) { _ in loadContent() }
         .onChange(of: wrapper.engineVersion) { _ in initializeData() }
     }
     
@@ -120,7 +126,7 @@ struct StudyView: View {
 
     @ViewBuilder
     private var chapterPickerContent: some View {
-        let chapters = availableBooks.first(where: { $0.name == selectedBook })?.chapters ?? []
+        let chapters = availableBooks.first(where: { $0.name == wrapper.selectedBook })?.chapters ?? []
         let total = max(1, chapters.count)
         
         VStack(alignment: .leading, spacing: 12) {
@@ -139,13 +145,13 @@ struct StudyView: View {
 
     func chapterCell(for ch: Int) -> some View {
         Button(action: {
-            selectedChapter = ch
+            wrapper.selectedChapter = ch
             showChapterPicker = false
         }) {
             Text("\(ch)")
                 .font(.system(size: 13, weight: .medium))
                 .frame(maxWidth: .infinity, minHeight: 32)
-                .background(selectedChapter == ch ? Color.accentColor : Color.primary.opacity(0.1))
+                .background(wrapper.selectedChapter == ch ? Color.accentColor : Color.primary.opacity(0.1))
                 .cornerRadius(6)
         }
         .buttonStyle(.plain)
@@ -190,10 +196,18 @@ struct StudyView: View {
         guard let engine = wrapper.engine else { return }
         
         wrapper.engineQueue.async {
-            let modules = engine.getAvailableModules()
+            let modules = engine.getBibleModules()
             
             DispatchQueue.main.async {
                 self.availableModules = modules
+                
+                // If current selected module is not in the installed list, pick the first one
+                if !modules.contains(where: { $0.name == wrapper.selectedModule }) {
+                    if let first = modules.first?.name {
+                        wrapper.selectedModule = first
+                    }
+                }
+                
                 self.updateBooks()
             }
         }
@@ -201,16 +215,16 @@ struct StudyView: View {
 
     func updateBooks() {
         guard let engine = wrapper.engine else { return }
-        let currentModule = selectedModule
+        let currentModule = wrapper.selectedModule
         
         wrapper.engineQueue.async {
             let books = engine.getBooks(moduleName: currentModule)
             
             DispatchQueue.main.async {
                 self.availableBooks = books
-                if !books.contains(where: { $0.name == self.selectedBook }) {
-                    self.selectedBook = books.first?.name ?? ""
-                    self.selectedChapter = 1
+                if !books.contains(where: { $0.name == wrapper.selectedBook }) {
+                    wrapper.selectedBook = books.first?.name ?? ""
+                    wrapper.selectedChapter = 1
                 }
                 self.loadContent()
             }
@@ -218,9 +232,9 @@ struct StudyView: View {
     }
 
     func loadContent() {
-        guard let engine = wrapper.engine, !selectedBook.isEmpty else { return }
-        let currentModule = selectedModule
-        let ref = "\(selectedBook) \(selectedChapter)"
+        guard let engine = wrapper.engine, !wrapper.selectedBook.isEmpty else { return }
+        let currentModule = wrapper.selectedModule
+        let ref = "\(wrapper.selectedBook) \(wrapper.selectedChapter)"
         
         wrapper.engineQueue.async {
             let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
@@ -228,6 +242,43 @@ struct StudyView: View {
             DispatchQueue.main.async {
                 self.sections = results
             }
+        }
+    }
+
+    // --- NAVIGATION LOGIC ---
+
+    func canGoToPrevious() -> Bool {
+        guard let currentIndex = availableBooks.firstIndex(where: { $0.name == wrapper.selectedBook }) else { return false }
+        return wrapper.selectedChapter > 1 || currentIndex > 0
+    }
+
+    func canGoToNext() -> Bool {
+        guard let currentIndex = availableBooks.firstIndex(where: { $0.name == wrapper.selectedBook }) else { return false }
+        let chapters = availableBooks[currentIndex].chapters
+        return wrapper.selectedChapter < chapters.count || currentIndex < availableBooks.count - 1
+    }
+
+    func goToPreviousChapter() {
+        if wrapper.selectedChapter > 1 {
+            wrapper.selectedChapter -= 1
+        } else {
+            guard let currentIndex = availableBooks.firstIndex(where: { $0.name == wrapper.selectedBook }), currentIndex > 0 else { return }
+            let prevBook = availableBooks[currentIndex - 1]
+            wrapper.selectedBook = prevBook.name
+            wrapper.selectedChapter = max(1, prevBook.chapters.count)
+        }
+    }
+
+    func goToNextChapter() {
+        guard let currentIndex = availableBooks.firstIndex(where: { $0.name == wrapper.selectedBook }) else { return }
+        let currentBook = availableBooks[currentIndex]
+        if wrapper.selectedChapter < currentBook.chapters.count {
+            wrapper.selectedChapter += 1
+        } else {
+            guard currentIndex < availableBooks.count - 1 else { return }
+            let nextBook = availableBooks[currentIndex + 1]
+            wrapper.selectedBook = nextBook.name
+            wrapper.selectedChapter = 1
         }
     }
 }
@@ -254,6 +305,27 @@ struct PopoverButton<Content: View>: View {
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             content()
         }
+    }
+}
+
+struct NavigationRectButton: View {
+    let icon: String
+    let action: () -> Void
+    let isDisabled: Bool
+    var isSide: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: isSide ? 18 : 11, weight: .bold))
+                .frame(width: 28, height: 36)
+                .background(RoundedRectangle(cornerRadius: 20).fill(.thinMaterial))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+                .opacity(isDisabled ? 0.2 : 0.8)
+                
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 }
 

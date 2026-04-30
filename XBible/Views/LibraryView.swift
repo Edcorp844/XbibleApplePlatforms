@@ -98,6 +98,7 @@ struct LibraryView: View {
 // MARK: - Library Language Section Component
 
 struct LibLanguageSection: View {
+    @EnvironmentObject var wrapper: SwordEngineWrapper
     let modules: [XbibleEngine.SwordModule]
     let langCode: String
     let count: Int
@@ -141,8 +142,7 @@ struct LibLanguageSection: View {
                                 status: .installed,
                                 showActionButton: false,
                                 action: {
-                                    // TODO: Open module in study view
-                                    print("Open \(module.name)")
+                                    wrapper.openModuleInStudy(module)
                                 },
                                 categoryName: categoryName,
                                 
