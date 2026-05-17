@@ -1,5 +1,6 @@
 import SwiftUI
 import XbibleEngine
+import SwiftData
 
 struct StoreView: View {
 

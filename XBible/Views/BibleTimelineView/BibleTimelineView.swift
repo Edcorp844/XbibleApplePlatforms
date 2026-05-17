@@ -9,7 +9,6 @@ struct BibleTimelineView: View {
     let rowHeight: CGFloat = 110.0
     let timelineStartYear = -4100
     let timelineEndYear = 2100
-    // We can remove horizontalPadding now because centerX handles the "dead space"
     
     private let timelineSpace = "TimelineCenterSpace"
 
@@ -41,6 +40,7 @@ struct BibleTimelineView: View {
                                 // Year Labels
                                 yearLabelsHeader
                                     .frame(width: totalWidth, height: 50)
+                                    .border(.secondary.opacity(0.4), width: 1)
                                     .padding(.leading, centerX) // SHIFTED RIGHT
 
                                 // Events Vertical Scroll
@@ -68,7 +68,7 @@ struct BibleTimelineView: View {
                     // 3. THE RED SCRUBBER (Fixed in the absolute center)
                     VStack(spacing: 0) {
                         Text(TimelineUtils.calculateLabel(start: activeYear, end: activeYear))
-                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .font(.system(size: 12).monospaced())
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -108,19 +108,20 @@ struct BibleTimelineView: View {
                 .foregroundColor(.red)
                 .offset(y: 4)
             Rectangle()
-                .fill(Color.red.opacity(0.3))
-                .frame(width: 2)
+                .fill(.red)
+                .frame(width: 0.5)
                 .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
+    
 
     private var yearLabelsHeader: some View {
         let years = Array(stride(from: timelineStartYear, to: timelineEndYear, by: 100))
         return ZStack(alignment: .topLeading) {
             ForEach(years, id: \.self) { year in
                 Text(TimelineUtils.calculateLabel(start: year, end: year))
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12).monospaced())
                     .foregroundColor(.secondary)
                     .position(
                         x: CGFloat(year - timelineStartYear) * pixelsPerYear,

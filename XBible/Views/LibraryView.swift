@@ -149,6 +149,7 @@ struct LibLanguageSection: View {
                                 menuAction: {
                                     // TODO: Show update menu
                                     print("Menu for \(module.name)")
+                                    
                                 }
                             )
                         }

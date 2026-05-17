@@ -8,7 +8,9 @@
 import SwiftUI
 
 struct TimelineUtils {
+    
     // MARK: - Constants
+    
     static let offsetTop: CGFloat = 50
     static let rows: CGFloat = 24
     static let rowHeight: CGFloat = 30
@@ -27,18 +29,15 @@ struct TimelineUtils {
 
     // MARK: - Helper Functions
     
-    /// Maps a value from one range to another
-//    static func mapRange(
-//        current: Double,
-//        from: ClosedRange<Double>,
-//        to: ClosedRange<Double>
-//    ) -> Double {
-//        return to.lowerBound + ((to.upperBound - to.lowerBound) * (current - from.lowerBound)) / (from.upperBound - from.lowerBound)
-//    }
-    
-    static func mapRange(current: CGFloat, fromMin: CGFloat, fromMax: CGFloat, toMin: CGFloat, toMax: CGFloat) -> CGFloat {
-            return toMin + ((toMax - toMin) * (current - fromMin)) / (fromMax - fromMin)
-        }
+    static func mapRange(
+        current: CGFloat,
+        fromMin: CGFloat,
+        fromMax: CGFloat,
+        toMin: CGFloat,
+        toMax: CGFloat
+    ) -> CGFloat {
+        return toMin + ((toMax - toMin) * (current - fromMin)) / (fromMax - fromMin)
+    }
     
     /// Generates the label for dates (BC/AD and prophetic eras) in English
     static func calculateLabel(start: Int, end: Int) -> String {

@@ -5,8 +5,6 @@ import SwiftUI
 
 import SwiftUI
 
-import SwiftUI
-
 struct TimelineItemView: View {
     let event: TimelineEvent
     let sectionColor: Color
@@ -17,25 +15,24 @@ struct TimelineItemView: View {
         Button {
             onSelect(event)
         } label: {
-            HStack(alignment: .center, spacing: 6) {
-                // 1. Text Content Column
-                VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 8) {
+                // Text Content
+                VStack(alignment: .leading, spacing: 2) {
                     Text(TimelineUtils.calculateLabel(start: event.start, end: event.end))
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 9, weight: .bold).monospaced())
                         .foregroundColor(sectionColor)
                         .lineLimit(1)
 
                     Text(event.title)
-                        .font(.system(size: event.type == .period ? 11 : 10, weight: .semibold))
+                        .font(.system(size: event.type == .period ? 12 : 10, weight: .bold))
                         .lineLimit(1)
                         .foregroundColor(.primary)
                 }
                 
                 Spacer(minLength: 0)
 
-                // 2. Small Image (Conditional based on bar width)
-                // Bible Strong style usually hides images in the timeline bar if too narrow
-                if width > 140, let imageUrlString = event.image, let url = URL(string: imageUrlString) {
+                // Image (scales with width)
+                if width > 100, let imageUrlString = event.image, let url = URL(string: imageUrlString) {
                     AsyncImage(url: url) { phase in
                         if let image = phase.image {
                             image.resizable().aspectRatio(contentMode: .fill)
@@ -43,31 +40,32 @@ struct TimelineItemView: View {
                             Color.gray.opacity(0.1)
                         }
                     }
-                    .frame(width: 24, height: 24) // Smaller for the 30px row height
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
             }
-            .padding(.vertical, 2)
-            .padding(.leading, 12) // Space for accent bar
-            .padding(.trailing, 6)
-            // Use the calculated width from the mapRange logic
-            .frame(width: width, height: 34, alignment: .leading)
+            .padding(.vertical, 6)
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .frame(width: max(width, 20), alignment: .leading)
             .background(
-                UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6, bottomTrailingRadius: 6, topTrailingRadius: 6)
+                // Corrected Name: UnevenRoundedRectangle
+                UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 8)
                     .fill(Color(NSColor.windowBackgroundColor))
             )
             .overlay(
-                // Left Accent Bar
-                UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6, bottomTrailingRadius: 0, topTrailingRadius: 0)
+                // Accent Bar (Matches left side curves)
+                UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8, bottomTrailingRadius: 0, topTrailingRadius: 0)
                     .fill(sectionColor)
                     .frame(width: 4),
                 alignment: .leading
             )
             .overlay(
-                // Subtle Border
-                UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6, bottomTrailingRadius: 6, topTrailingRadius: 6)
-                    .stroke(sectionColor.opacity(0.3), lineWidth: event.type == .period ? 1.5 : 0.5)
+                // Border
+                UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 8)
+                    .stroke(sectionColor, lineWidth: event.type == .period ? 2 : 0.5)
             )
+            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
         }
         .buttonStyle(.plain)
     }

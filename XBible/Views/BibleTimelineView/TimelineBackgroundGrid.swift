@@ -22,7 +22,7 @@ struct TimelineBackgroundGrid: View {
                 
                 // Vertical Grid Line
                 Rectangle()
-                    .fill(.foreground.opacity(0.4)) 
+                    .fill(.secondary.opacity(0.4))
                     .frame(width: 1)
                     .frame(maxHeight: .infinity)
                     .offset(x: xPos)

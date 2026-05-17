@@ -7,10 +7,13 @@
 
 import SwiftUI
 import XbibleEngine
+import SwiftData
 
 
 struct StudyView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
+    @Environment(\.modelContext) private var modelContext
+    
     
     @State private var sections: [ModuleSection] = []
     @State private var searchText: String = ""
@@ -238,6 +241,9 @@ struct StudyView: View {
         
         wrapper.engineQueue.async {
             let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
+            let show = engine.getContent(moduleName: currentModule, reference: ref)
+            
+            print("Content: \(show)")
             
             DispatchQueue.main.async {
                 self.sections = results
