@@ -35,7 +35,7 @@ struct StudyView: View {
     // Lexicon Lookup State
     @State private var selectedStrongsForLookup: String = ""
     @State private var selectedLexiconModule: String = ""
-    @State private var lexiconResults: [XbibleEngine.Section] = []
+    @State private var lexiconResults: [XbibleEngine.LexiconResult] = []
     @State private var availableLexicons: [XbibleEngine.SwordModule] = []
     @State private var isLexiconLoading = false
     
@@ -422,26 +422,34 @@ struct StudyView: View {
     }
 
     func loadLexiconContent() {
-        guard !selectedLexiconModule.isEmpty && !selectedStrongsForLookup.isEmpty else {
+        guard !selectedStrongsForLookup.isEmpty else {
             self.lexiconResults = []
             return
         }
         
         isLexiconLoading = true
-        let moduleName = selectedLexiconModule
         let reference = selectedStrongsForLookup
+        let currentModule = selectedLexiconModule
+        
+        let targetLanguage = availableLexicons.first(where: { $0.name == currentModule })?.language ?? "en"
         
         wrapper.engineQueue.async {
             guard let engine = wrapper.engine else { return }
-            let results = engine.getContent(moduleName: moduleName, reference: reference)
+            
+            let query = LexiconQuery(strongsNumber: reference, language: targetLanguage)
+            let response = engine.lookupStrongsNumber(query: query)
+            
+            // Filter down to the single desired module
+            let matchedResults = response.results.filter { $0.moduleName == currentModule }
+            
             
             DispatchQueue.main.async {
-                self.lexiconResults = results
+                self.lexiconResults = matchedResults
                 self.isLexiconLoading = false
             }
         }
     }
-
+    
     func loadCommentariesMetadata(completion: (() -> Void)? = nil) {
         wrapper.engineQueue.async {
             guard let engine = wrapper.engine else { return }

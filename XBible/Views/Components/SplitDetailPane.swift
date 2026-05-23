@@ -4,6 +4,7 @@
 //
 //  Created by Zoe Brooklyn on 5/23/26.
 //
+
 import SwiftUI
 import XbibleEngine
 
@@ -22,7 +23,7 @@ struct SplitDetailPane: View {
     @Binding var selectedStrongsForLookup: String
     @Binding var selectedLexiconModule: String
     let availableLexicons: [XbibleEngine.SwordModule]
-    let lexiconResults: [XbibleEngine.Section]
+    let lexiconResults: [LexiconResult] // Your flat lookup structure
     let isLexiconLoading: Bool
     let onLexiconModuleChanged: () -> Void
     
@@ -41,7 +42,7 @@ struct SplitDetailPane: View {
                 StudyToolsControl(
                     selection: $selectedTab,
                     items: StudyTab.allCases,
-                    title: { $0.rawValue },
+                    title: { $0.rawValue }
                 )
                 
                 Button(action: {
@@ -110,10 +111,9 @@ struct SplitDetailPane: View {
                             .font(.headline)
                             .foregroundColor(.primary)
                         
-                        // The subtle design accent line
                         Capsule()
-                            .fill(Color.accentColor) // Or your specific design accent color
-                            .frame(width: 24, height: 3) // Small, modern footprint
+                            .fill(Color.accentColor)
+                            .frame(width: 24, height: 3)
                     }
                 } else {
                     Text("Select a word to lookup")
@@ -151,8 +151,9 @@ struct SplitDetailPane: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        ForEach(0..<dictionaryResults.count, id: \.self) { idx in
-                            DictionaryResultRowView(result: dictionaryResults[idx])
+                        // Safe enumeration pattern avoids out-of-bounds index race conditions
+                        ForEach(Array(dictionaryResults.enumerated()), id: \.offset) { _, result in
+                            DictionaryResultRowView(result: result)
                         }
                     }
                     .padding(16)
@@ -235,9 +236,6 @@ struct SplitDetailPane: View {
                             .background(Color.secondary.opacity(0.15))
                             .cornerRadius(4)
                         Spacer()
-                        if !lexiconResults.isEmpty {
-                            CopyButton(text: copyableText(for: lexiconResults))
-                        }
                     }
                 }
             }
@@ -272,8 +270,32 @@ struct SplitDetailPane: View {
                 .padding(32)
             } else {
                 ScrollView {
-                    SectionContentView(sections: lexiconResults, onWordClick: onWordClick)
-                        .padding(16)
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(lexiconResults, id: \.resolvedKey) { result in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(result.resolvedKey)
+                                        .font(.headline)
+                                        .foregroundColor(.accentColor)
+                                    
+                                    if !result.isExactMatch {
+                                        Text("(Closest Match)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .italic()
+                                    }
+                                }
+                                
+                                Text(result.definition)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                    .textSelection(.enabled)
+                                    .lineSpacing(4)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .padding(16)
                 }
             }
         }
@@ -349,7 +371,15 @@ struct SplitDetailPane: View {
                         .fontWeight(.bold)
                     Spacer()
                     if !commentaryResults.isEmpty {
-                        CopyButton(text: copyableText(for: commentaryResults))
+                        Button(action: {
+                            let pasteboard = NSPasteboard.general
+                            pasteboard.clearContents()
+                            pasteboard.setString(copyableText(for: commentaryResults), forType: .string)
+                        }) {
+                            Label("Copy", systemImage: "doc.on.doc")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
                     }
                 }
             }
@@ -412,46 +442,3 @@ struct SplitDetailPane: View {
     }
 }
 
-struct SectionContentView: View {
-    let sections: [XbibleEngine.Section]
-    var onWordClick: ((XbibleEngine.Word) -> Void)? = nil
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(0..<sections.count, id: \.self) { i in
-                let section = sections[i]
-                VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 10) {
-                    if !section.title.isEmpty {
-                        FlowLayout(spacing: 4) {
-                            ForEach(0..<section.title.count, id: \.self) { j in
-                                WordView(word: section.title[j], onWordTextClicked: {
-                                    onWordClick?(section.title[j])
-                                })
-                            }
-                        }
-                        .padding(.bottom, 4)
-                    }
-                    
-                    ForEach(section.verses, id: \.osisId) { verse in
-                        HStack(alignment: .top, spacing: 6) {
-                            if verse.number > 0 {
-                                Text("\(verse.number)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 2)
-                            }
-                            
-                            FlowLayout(spacing: 6) {
-                                ForEach(0..<verse.words.count, id: \.self) { k in
-                                    WordView(word: verse.words[k], onWordTextClicked: {
-                                        onWordClick?(verse.words[k])
-                                    })
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

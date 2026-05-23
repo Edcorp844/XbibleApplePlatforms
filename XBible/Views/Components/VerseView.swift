@@ -23,8 +23,13 @@ struct VerseView: View {
             FlowLayout(spacing: 8) {
                 ForEach(0..<verse.words.count, id: \.self) { i in
                     let w = verse.words[i]
+                    let commentaryTheme = WordView.Configuration(
+                        fontSize: 18,
+                    )
+
                     WordView(
                         word: w,
+                        config: commentaryTheme,
                         onWordTextClicked: {
                             onWordTextClicked?(w)
                         },

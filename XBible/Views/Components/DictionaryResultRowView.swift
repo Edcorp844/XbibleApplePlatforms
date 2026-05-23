@@ -139,6 +139,11 @@ struct DictionaryResultRowView: View {
             white-space: pre-wrap;
             margin: 8px 0;
         }
+        a{
+            color: #079af5ff;
+            cursor: pointer;
+            text-decoration: none;
+        }
         </style>
         """
         

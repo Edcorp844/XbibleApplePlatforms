@@ -99,7 +99,7 @@ struct StoreView: View {
                 .padding(.vertical, 8)
                 .background(
                     selectedCategory == category
-                        ? Color.accentColor.opacity(0.15)
+                        ? Color.accentColor
                         : Color.primary.opacity(0.05)
                 )
                 .clipShape(Capsule())
