@@ -22,8 +22,31 @@ struct StudyView: View {
     @State private var availableModules: [XbibleEngine.SwordModule] = []
     @State private var availableBooks: [XbibleEngine.ModuleBook] = []
     
-    init() { }
+    // Split View Layout State
+    @State private var isSplitViewPresented = false
+    @State private var detailWidth: CGFloat = 350
+    @State private var selectedTab: StudyTab = .dictionary
     
+    // Dictionary Lookup State
+    @State private var selectedWordForLookup: String = ""
+    @State private var dictionaryResults: [XbibleEngine.DictionaryResult] = []
+    @State private var isDictionaryLoading = false
+    
+    // Lexicon Lookup State
+    @State private var selectedStrongsForLookup: String = ""
+    @State private var selectedLexiconModule: String = ""
+    @State private var lexiconResults: [XbibleEngine.Section] = []
+    @State private var availableLexicons: [XbibleEngine.SwordModule] = []
+    @State private var isLexiconLoading = false
+    
+    // Commentary Lookup State
+    @State private var selectedCommentaryModule: String = ""
+    @State private var commentaryResults: [XbibleEngine.Section] = []
+    @State private var availableCommentaries: [XbibleEngine.SwordModule] = []
+    @State private var isCommentaryLoading = false
+    @State private var currentCommentaryReference: String = ""
+    
+    init() { }
     
     // Popover Toggles
     @State private var showModulePicker = false
@@ -31,41 +54,86 @@ struct StudyView: View {
     @State private var showChapterPicker = false
     
     var body: some View {
-        ZStack {
-            ScrollView {
-                HStack {
-                    Spacer(minLength: 0)
-                    VStack(alignment: .leading, spacing: 40) {
-                        ForEach(0..<sections.count, id: \.self) { i in
-                            let section = sections[i]
-                            VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
-                                if !section.title.isEmpty {
-                                    FlowLayout(spacing: 8) {
-                                        ForEach(0..<section.title.count, id: \.self) { j in
-                                            WordView(word: section.title[j])
+        HStack(spacing: 0) {
+            ZStack {
+                ScrollView {
+                    HStack {
+                        Spacer(minLength: 0)
+                        VStack(alignment: .leading, spacing: 40) {
+                            ForEach(0..<sections.count, id: \.self) { i in
+                                let section = sections[i]
+                                VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
+                                    if !section.title.isEmpty {
+                                        FlowLayout(spacing: 8) {
+                                            ForEach(0..<section.title.count, id: \.self) { j in
+                                                self.wordView(for: section, at: j)
+                                            }
                                         }
+                                        .frame(maxWidth: .infinity, alignment: .center)
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                }
-                                ForEach(section.verses, id: \.osisId) { verse in
-                                    VerseView(verse: verse)
+                                    ForEach(section.verses, id: \.osisId) { verse in
+                                        VerseView(
+                                            verse: verse,
+                                            onWordTextClicked: { word in
+                                                lookupWord(word)
+                                            },
+                                            onStrongsClicked: { strongs in
+                                                lookupStrongs(strongs)
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
+                        .padding(40)
+                        .frame(minWidth: 400, maxWidth: 1200)
+                        Spacer(minLength: 0)
                     }
-                    .padding(40)
-                    .frame(minWidth: 400, maxWidth: 1200)
-                    Spacer(minLength: 0)
+                }
+                
+                // Side Navigation Buttons
+                HStack {
+                    NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
+                        .padding(.leading, 8)
+                    Spacer()
+                    NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
+                        .padding(.trailing, 8)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            // Side Navigation Buttons
-            HStack {
-                NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
-                    .padding(.leading, 8)
-                Spacer()
-                NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
-                    .padding(.trailing, 8)
+            // Draggable Split View
+            if isSplitViewPresented {
+                SplitDivider(detailWidth: $detailWidth)
+                
+                SplitDetailPane(
+                    isPresented: $isSplitViewPresented,
+                    selectedTab: $selectedTab,
+                    width: detailWidth,
+                    selectedWordForLookup: $selectedWordForLookup,
+                    dictionaryResults: $dictionaryResults,
+                    isDictionaryLoading: isDictionaryLoading,
+                    onWordClick: { word in
+                        lookupWord(word)
+                    },
+                    selectedStrongsForLookup: $selectedStrongsForLookup,
+                    selectedLexiconModule: $selectedLexiconModule,
+                    availableLexicons: availableLexicons,
+                    lexiconResults: lexiconResults,
+                    isLexiconLoading: isLexiconLoading,
+                    onLexiconModuleChanged: {
+                        loadLexiconContent()
+                    },
+                    selectedCommentaryModule: $selectedCommentaryModule,
+                    availableCommentaries: availableCommentaries,
+                    commentaryResults: commentaryResults,
+                    isCommentaryLoading: isCommentaryLoading,
+                    onCommentaryModuleChanged: {
+                        loadCommentaryContent()
+                    },
+                    currentCommentaryReference: currentCommentaryReference
+                )
+                .transition(.move(edge: .trailing))
             }
         }
         .onAppear(perform: initializeData)
@@ -74,13 +142,20 @@ struct StudyView: View {
             ToolbarItemGroup(placement: .navigation) {
                 
                 // 1. Module Selection
-                PopoverButton(label: wrapper.selectedModule, isPresented: $showModulePicker) {
+                PopoverButton(
+                    label: wrapper.selectedModule,
+                    isPresented: $showModulePicker
+                ) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Bible Versions").font(.headline).padding(.bottom, 8)
                         ScrollView{
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
                                 ForEach(availableModules, id: \.name) { module in
-                                    moduleSelectionRow(module.name, language: module.language, isSelected: wrapper.selectedModule == module.name) {
+                                    moduleSelectionRow(
+                                        module.name,
+                                        language: module.language,
+                                        isSelected: wrapper.selectedModule == module.name
+                                    ) {
                                         wrapper.selectedModule = module.name
                                         showModulePicker = false
                                     }
@@ -91,6 +166,7 @@ struct StudyView: View {
                     .padding()
                     .frame(width: 220)
                 }
+                
                 // 2. Book Selection (Grid)
                 PopoverButton(label: wrapper.selectedBook, isPresented: $showBookPicker) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -109,23 +185,38 @@ struct StudyView: View {
                     .padding()
                     .frame(width: 500, height: 400)
                 }
-
+                
                 // 3. Chapter Selection (Number Grid)
                 PopoverButton(label: "\(wrapper.selectedChapter)", isPresented: $showChapterPicker) {
                     chapterPickerContent
                 }
             }
-        }.backgroundStyle(.clear)
+            
+        }
+        .backgroundStyle(.clear)
         .onChange(of: wrapper.selectedModule) { _ in updateBooks() }
-        .onChange(of: wrapper.selectedBook) { _ in 
+        .onChange(of: wrapper.selectedBook) { _ in
             wrapper.selectedChapter = 1
-            loadContent() 
+            loadContent()
         }
         .onChange(of: wrapper.selectedChapter) { _ in loadContent() }
         .onChange(of: wrapper.engineVersion) { _ in initializeData() }
     }
     
+    
     // --- UI HELPERS ---
+
+    @ViewBuilder
+    private func wordView(for section: ModuleSection, at index: Int) -> some View {
+        let currentWord = section.title[index]
+        
+        return WordView(
+            word: currentWord,
+            onWordTextClicked: {
+                self.lookupWord(currentWord)
+            }
+        )
+    }
 
     @ViewBuilder
     private var chapterPickerContent: some View {
@@ -200,6 +291,8 @@ struct StudyView: View {
         
         wrapper.engineQueue.async {
             let modules = engine.getBibleModules()
+            let lexicons = engine.getLexiconModules()
+            let commentaries = engine.getCommentaryModules()
             
             DispatchQueue.main.async {
                 self.availableModules = modules
@@ -211,7 +304,18 @@ struct StudyView: View {
                     }
                 }
                 
+                self.availableLexicons = lexicons
+                if self.selectedLexiconModule.isEmpty || !lexicons.contains(where: { $0.name == self.selectedLexiconModule }) {
+                    self.selectedLexiconModule = lexicons.first?.name ?? ""
+                }
+                
+                self.availableCommentaries = commentaries
+                if self.selectedCommentaryModule.isEmpty || !commentaries.contains(where: { $0.name == self.selectedCommentaryModule }) {
+                    self.selectedCommentaryModule = commentaries.first?.name ?? ""
+                }
+                
                 self.updateBooks()
+                self.loadCommentaryContent()
             }
         }
     }
@@ -247,6 +351,130 @@ struct StudyView: View {
             
             DispatchQueue.main.async {
                 self.sections = results
+                self.loadCommentaryContent()
+            }
+        }
+    }
+
+    // --- LOOKUP ACTIONS ---
+
+    func lookupWord(_ word: XbibleEngine.Word) {
+        let cleanWord = word.text.trimmingCharacters(in: .punctuationCharacters)
+        guard !cleanWord.isEmpty else { return }
+        
+        selectedWordForLookup = cleanWord
+        selectedTab = .dictionary
+        
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            isSplitViewPresented = true
+        }
+        isDictionaryLoading = true
+        
+        let query = DictionaryQuery(
+            word: cleanWord,
+            strongs: [],
+            language: word.language
+        )
+        
+        wrapper.engineQueue.async {
+            guard let engine = wrapper.engine else { return }
+            let response = engine.lookupDictionary(query: query)
+            
+            DispatchQueue.main.async {
+                self.dictionaryResults = response.results
+                self.isDictionaryLoading = false
+            }
+        }
+    }
+
+    func lookupStrongs(_ strongsCode: String) {
+        guard !strongsCode.isEmpty else { return }
+        
+        selectedStrongsForLookup = strongsCode
+        selectedTab = .lexicon
+        
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            isSplitViewPresented = true
+        }
+        
+        if availableLexicons.isEmpty {
+            loadLexiconsMetadata {
+                self.loadLexiconContent()
+            }
+        } else {
+            self.loadLexiconContent()
+        }
+    }
+
+    func loadLexiconsMetadata(completion: (() -> Void)? = nil) {
+        wrapper.engineQueue.async {
+            guard let engine = wrapper.engine else { return }
+            let lexicons = engine.getLexiconModules()
+            
+            DispatchQueue.main.async {
+                self.availableLexicons = lexicons
+                if self.selectedLexiconModule.isEmpty || !lexicons.contains(where: { $0.name == self.selectedLexiconModule }) {
+                    self.selectedLexiconModule = lexicons.first?.name ?? ""
+                }
+                completion?()
+            }
+        }
+    }
+
+    func loadLexiconContent() {
+        guard !selectedLexiconModule.isEmpty && !selectedStrongsForLookup.isEmpty else {
+            self.lexiconResults = []
+            return
+        }
+        
+        isLexiconLoading = true
+        let moduleName = selectedLexiconModule
+        let reference = selectedStrongsForLookup
+        
+        wrapper.engineQueue.async {
+            guard let engine = wrapper.engine else { return }
+            let results = engine.getContent(moduleName: moduleName, reference: reference)
+            
+            DispatchQueue.main.async {
+                self.lexiconResults = results
+                self.isLexiconLoading = false
+            }
+        }
+    }
+
+    func loadCommentariesMetadata(completion: (() -> Void)? = nil) {
+        wrapper.engineQueue.async {
+            guard let engine = wrapper.engine else { return }
+            let commentaries = engine.getCommentaryModules()
+            
+            DispatchQueue.main.async {
+                self.availableCommentaries = commentaries
+                if self.selectedCommentaryModule.isEmpty || !commentaries.contains(where: { $0.name == self.selectedCommentaryModule }) {
+                    self.selectedCommentaryModule = commentaries.first?.name ?? ""
+                }
+                completion?()
+            }
+        }
+    }
+
+    func loadCommentaryContent() {
+        guard !selectedCommentaryModule.isEmpty else {
+            self.commentaryResults = []
+            return
+        }
+        
+        isCommentaryLoading = true
+        let moduleName = selectedCommentaryModule
+        let reference = "\(wrapper.selectedBook) \(wrapper.selectedChapter)"
+        currentCommentaryReference = reference
+        
+        wrapper.engineQueue.async {
+            guard let engine = wrapper.engine else { return }
+            let results = engine.getChapterContent(moduleName: moduleName, reference: reference)
+            
+            DispatchQueue.main.async {
+                self.commentaryResults = results
+                self.isCommentaryLoading = false
             }
         }
     }
@@ -304,8 +532,8 @@ struct PopoverButton<Content: View>: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 8).fill(.ultraThinMaterial))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+            .background(RoundedRectangle(cornerRadius: 20).fill(.ultraThinMaterial))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
@@ -335,75 +563,20 @@ struct NavigationRectButton: View {
     }
 }
 
-// MARK: - Supporting Views (Word, Verse, Layout)
+// MARK: - Split View Supporting Views & Enums
 
-struct WordView: View {
-    let word: XbibleEngine.Word
-    var body: some View {
-        VStack(alignment: .center, spacing: 2) {
-            Text(word.text)
-                .font(.system(size: 17, design: .serif))
-                .fontWeight(word.isBoldText ? .bold : .regular)
-                .italic(word.isItalic)
-                .foregroundColor(word.isRed ? .red : .primary)
-            
-            if let lex = word.lex, !lex.strongs.isEmpty || !lex.morph.isEmpty {
-                HStack(spacing: 3) {
-                    if let strong = lex.strongs.first {
-                        Text(strong).font(.system(size: 9, weight: .bold, design: .monospaced))
-                    }
-                    if let morph = lex.morph.first {
-                        Text(morph).font(.system(size: 8)).foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(Color.secondary.opacity(0.15)).cornerRadius(4)
-            }
+enum StudyTab: String, CaseIterable, Identifiable {
+    case dictionary = "Dictionary"
+    case lexicon = "Lexicon"
+    case commentary = "Commentary"
+    
+    var id: String { self.rawValue }
+    
+    var icon: String {
+        switch self {
+        case .dictionary: return "character.book.closed"
+        case .lexicon: return "abc"
+        case .commentary: return "text.quote"
         }
-    }
-}
-
-struct VerseView: View {
-    let verse: XbibleEngine.Verse
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            Text("\(verse.number)")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.trailing, 4).baselineOffset(8)
-            
-            FlowLayout(spacing: 8) {
-                ForEach(0..<verse.words.count, id: \.self) { i in
-                    WordView(word: verse.words[i])
-                }
-            }
-        }
-    }
-}
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = layout(at: .zero, in: proposal.replacingUnspecifiedDimensions().width, subviews: subviews)
-        return result.size
-    }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        _ = layout(at: bounds.origin, in: bounds.width, subviews: subviews, place: true)
-    }
-    private func layout(at origin: CGPoint, in maxWidth: CGFloat, subviews: Subviews, place: Bool = false) -> (size: CGSize, lastY: CGFloat) {
-        var x = origin.x, y = origin.y, rowHeight: CGFloat = 0, width: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > origin.x + maxWidth {
-                x = origin.x
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            if place { subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified) }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            width = max(width, x - origin.x)
-        }
-        return (CGSize(width: width, height: y + rowHeight - origin.y), y + rowHeight)
     }
 }
