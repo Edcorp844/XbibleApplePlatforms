@@ -271,22 +271,24 @@ struct SplitDetailPane: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        ForEach(lexiconResults, id: \.resolvedKey) { result in
+                        // 1. Added missing closing parenthesis after id: \.module_name
+                        // 2. Switched id to module_name since 'key' is identical across all results
+                        ForEach(lexiconResults, id: \.moduleName) { result in
+                            let formatted = parseHTML(result.definition, for: result.key)
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text(result.resolvedKey)
+                                    // 3. Changed resolvedKey to module_name to display the dictionary source
+                                    Text(result.moduleName)
                                         .font(.headline)
                                         .foregroundColor(.accentColor)
                                     
-                                    if !result.isExactMatch {
-                                        Text("(Closest Match)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .italic()
-                                    }
+                                    // 4. Changed key display to show the searched identifier
+                                    Text("(\(result.key))")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
                                 }
                                 
-                                Text(result.definition)
+                                Text(formatted.attributedString)
                                     .font(.body)
                                     .foregroundColor(.primary)
                                     .textSelection(.enabled)
@@ -297,6 +299,7 @@ struct SplitDetailPane: View {
                     }
                     .padding(16)
                 }
+
             }
         }
     }
