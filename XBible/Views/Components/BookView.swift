@@ -16,16 +16,20 @@ struct BookView: View {
             
             // --- THE PHYSICAL BOOK ---
             ZStack {
-                // Book Cover Base - Uses the new persistent random color
                 UnevenRoundedRectangle(
                     topLeadingRadius: 4,
                     bottomLeadingRadius: 4,
                     bottomTrailingRadius: 6,
                     topTrailingRadius: 6
                 )
-                .fill(generatePersistentColor(for: "\(module.name)\(module.description)"))
+                .fill(
+                    Color(
+                        hue: module.signatureColor.hue,
+                        saturation: module.signatureColor.saturation,
+                        brightness: module.signatureColor.brightness
+                    )
+                )
                 
-                // Rust-style Gradients (Crease, Shine, and Depth)
                 UnevenRoundedRectangle(
                     topLeadingRadius: 4,
                     bottomLeadingRadius: 4,
@@ -51,7 +55,7 @@ struct BookView: View {
                         .frame(width: 3)
                     Spacer()
                 }
-
+                
                 // Cover Content (Title & Version)
                 VStack(spacing: 0) {
                     Text(module.description)
@@ -76,12 +80,5 @@ struct BookView: View {
             .scaleEffect( 1.0)
         }
         .padding(10)
-    }
-    
-    
-    func generatePersistentColor(for input: String) -> Color {
-        let hash = input.hashValue
-        let hue = Double(abs(hash % 1000)) / 1000.0
-        return Color(hue: hue, saturation: 0.5, brightness: 0.45)
     }
 }

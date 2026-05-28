@@ -13,7 +13,7 @@ import SwiftUI
 class SwordEngineWrapper: ObservableObject {
     // The actual Rust engine instance
     // Shared engine instance for the entire app
-    @Published var engine: BibleEngine?
+    @Published var engine: XBibleEngine?
     
     // Persistent task manager to cache catalog and manage background tasks
     var storeTaskManager = StoreTaskManager()
@@ -99,7 +99,7 @@ class SwordEngineWrapper: ObservableObject {
             SwordEngineWrapper.isInitializing = true
             
             do {
-                let sharedEngine = BibleEngine()
+                let sharedEngine = XBibleEngine()
                 
                 DispatchQueue.main.async {
                     self.engine = sharedEngine

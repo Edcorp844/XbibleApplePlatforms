@@ -12,7 +12,7 @@ class StoreTaskManager: ObservableObject {
     private let pollQueue = DispatchQueue(label: "com.xbible.store-task-manager.poll", qos: .utility)
     
     private var modelContext: ModelContext?
-    private var engine: BibleEngine? // Stored for easier access
+    private var engine: XBibleEngine? // Stored for easier access
     
     private var activeTasks: [String: ActiveTask] = [:]
     private var pollTimer: DispatchSourceTimer?
@@ -32,7 +32,7 @@ class StoreTaskManager: ObservableObject {
         case installModule
     }
     
-    func setup(modelContext: ModelContext, engine: BibleEngine, queue: DispatchQueue? = nil) {
+    func setup(modelContext: ModelContext, engine: XBibleEngine, queue: DispatchQueue? = nil) {
         if let sharedQueue = queue {
             self.queue = sharedQueue
         }
@@ -54,7 +54,7 @@ class StoreTaskManager: ObservableObject {
         self.pollTimer = timer
     }
     
-    func fetchSources(engine: BibleEngine) {
+    func fetchSources(engine: XBibleEngine) {
         if let cached = cachedSources {
             messages.send(.sourcesUpdated(cached))
             return
@@ -73,7 +73,7 @@ class StoreTaskManager: ObservableObject {
         }
     }
     
-    func fetchModules(engine: BibleEngine, source: String, isSilent: Bool = false) {
+    func fetchModules(engine: XBibleEngine, source: String, isSilent: Bool = false) {
         queue.async { [weak self] in
             guard let self = self else { return }
             
@@ -101,14 +101,14 @@ class StoreTaskManager: ObservableObject {
         return queue.sync { cachedModules[source] }
     }
     
-    func refreshModules(engine: BibleEngine, source: String) {
+    func refreshModules(engine: XBibleEngine, source: String) {
         queue.async { [weak self] in
             self?.cachedModules.removeValue(forKey: source)
             self?.fetchModules(engine: engine, source: source)
         }
     }
     
-    func installModule(engine: BibleEngine, source: String, moduleName: String, skipDatabase: Bool = false) {
+    func installModule(engine: XBibleEngine, source: String, moduleName: String, skipDatabase: Bool = false) {
         queue.async { [weak self] in
             guard let self = self else { return }
             
@@ -157,7 +157,7 @@ class StoreTaskManager: ObservableObject {
         }
     }
     
-    private func pollActiveTasks(engine: BibleEngine) {
+    private func pollActiveTasks(engine: XBibleEngine) {
         // Only poll if we actually have tasks to avoid constant FFI noise
         guard !activeTasks.isEmpty else { return }
 

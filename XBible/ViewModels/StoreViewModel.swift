@@ -23,7 +23,7 @@ class StoreViewModel: ObservableObject {
 
     private var taskManager: StoreTaskManager?
     private var cancellables = Set<AnyCancellable>()
-    private var engine: BibleEngine?
+    private var engine: XBibleEngine?
     private var modelContext: ModelContext?
 
     // MARK: - Computed Properties
