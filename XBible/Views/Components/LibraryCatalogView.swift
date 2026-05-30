@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-
 import XbibleEngine
 
 struct LibraryCatalogView: View {
@@ -29,13 +28,16 @@ struct LibraryCatalogView: View {
                             Text(module.metadata?.displayTitle ?? module.fileName)
                                 .font(.body)
                                 .fontWeight(.medium)
+                            
                             if let meta = module.metadata {
                                 Text("\(meta.language) • \(meta.contributor)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        
                         Spacer()
+                        
                         if viewModel.selectedModule?.fileName == module.fileName {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)

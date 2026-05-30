@@ -5,6 +5,7 @@
 //  Created by Zoe Brooklyn on 4/21/26.
 //
 import SwiftUI
+import XbibleEngine
 
 struct DetailView: View {
     let selection: SidebarItem?
@@ -41,7 +42,11 @@ struct DetailView: View {
                 case .bibleTimeline:
                     BibleTimelineView()
                 case .audioBible:
-                    AudioBibleView()
+                    
+                    let sandboxEngine = AudioEngine()
+                        
+                        AudioBibleView(engine: sandboxEngine)
+                    
                 case .maps:
                     MapsView()
                 case .glossary:

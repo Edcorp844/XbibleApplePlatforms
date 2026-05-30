@@ -36,76 +36,88 @@ struct InteractiveNavigationCardView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .background(Color.white.opacity(0.06))
             }
             .buttonStyle(.plain)
             
             // --- EXPANDABLE NAVIGATION TREE SECTION ---
             if isExpanded {
                 VStack(spacing: 0) {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    let chapters = viewModel.cachedChaptersList
                     
-                    if let rootNode = viewModel.navigationTreeRoot {
+                    if !chapters.isEmpty {
                         ScrollView(.vertical, showsIndicators: true) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(rootNode.children, id: \.id) { section in
-                                    ForEach(section.children, id: \.id) { chapter in
-                                        
-                                        // Extracted Sub-view clears type-checking bottlenecks instantly
-                                        ChapterRowView(
-                                            chapter: chapter,
-                                            rootNode: rootNode,
-                                            isSelected: viewModel.selectedNodeId == chapter.id,
-                                            onSelect: {
-                                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                    viewModel.selectedNodeId = chapter.id
-                                                    isExpanded = false
-                                                }
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(chapters, id: \.stableId) { chapter in
+                                    ChapterRowView(
+                                        chapter: chapter,
+                                        chapterIndex: viewModel.getChapterIndex(for: chapter.id),
+                                        isSelected: viewModel.selectedNodeId == chapter.id,
+                                        currentPlaybackMs: viewModel.playbackState?.currentTimeMs ?? 0, // 🌟 Feeds current clock digit downstream
+                                        onSelect: {
+                                            viewModel.seekToChapter(id: chapter.id)
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                viewModel.selectedNodeId = chapter.id
+                                                isExpanded = false
                                             }
-                                        )
-                                        
-                                    }
+                                        }
+                                    )
                                 }
                             }
-                            .padding(.vertical, 6)
                         }
                         .frame(maxHeight: 240)
                     } else {
-                        Text("No Chapters Found")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.4))
-                            .padding()
+                        HStack {
+                            Spacer()
+                            Text("Loading Navigation Catalog...")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.4))
+                                .padding()
+                            Spacer()
+                        }
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Color.white.opacity(0.08))
+        .background(Color.white.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal)
-        .padding(.top, 40)
     }
     
-    // MARK: - Dynamic State Helpers
-    private var currentActiveTitle: String { "Power of Tongues" }
-    private var currentActiveSubtitle: String { "Chapter 5 of 6" }
+    // MARK: - Safe Non-Allocating State Lookups
+    private var currentActiveTitle: String {
+        let chapters = viewModel.cachedChaptersList
+        if let matchingChapter = chapters.first(where: { $0.id == viewModel.selectedNodeId }) {
+            return matchingChapter.title
+        }
+        return viewModel.selectedModule?.metadata?.displayTitle
+            ?? viewModel.selectedModule?.fileName
+            ?? "Select Audio Module"
+    }
+
+    private var currentActiveSubtitle: String {
+        let chapters = viewModel.cachedChaptersList
+        if let idx = chapters.firstIndex(where: { $0.id == viewModel.selectedNodeId }) {
+            return "Chapter \(idx + 1) of \(chapters.count)"
+        }
+        return "Select Chapter"
+    }
 }
 
-// MARK: - EXTRACTED ROW SUB-VIEW
+// MARK: - LIGHTWEIGHT EXTRACTED ROW VIEW
 struct ChapterRowView: View {
     let chapter: AudioNode
-    let rootNode: AudioNode
+    let chapterIndex: Int
     let isSelected: Bool
+    let currentPlaybackMs: Int64 // Pass the live timeline tracker down from the view model
     let onSelect: () -> Void
+    
+    @State private var wavePhase: Double = 0.0
     
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
                 if isSelected {
-                    Text("•••••")
-                        .font(.caption)
-                        .foregroundColor(.white)
+                    AudioWaveformIndicator()
                 } else {
                     Text("\(chapterIndex)")
                         .font(.system(size: 13, design: .monospaced))
@@ -119,8 +131,9 @@ struct ChapterRowView: View {
                 
                 Spacer()
                 
+                // 🌟 Dynamic duration label swapping based on row context selection
                 Text(durationString)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
             }
             .padding(.horizontal, 16)
@@ -130,22 +143,24 @@ struct ChapterRowView: View {
         .buttonStyle(.plain)
     }
     
-    // Isolate calculation logic away from view bodies
-    private var chapterIndex: Int {
-        let allChapters = rootNode.children.flatMap { $0.children }
-        if let idx = allChapters.firstIndex(where: { $0.id == chapter.id }) {
-            return idx + 1
-        }
-        return 1
-    }
-    
     private var durationString: String {
-        // Safely unwrap optionals with a fallback of 0
         let start = chapter.startMs ?? 0
         let end = chapter.endMs ?? 0
         
-        let diffSeconds = max(0, (end - start) / 1000)
-        if diffSeconds == 0 { return "10m" } // Keeps your default fallback intact
-        return "\(diffSeconds / 60)m"
+        if isSelected {
+            // 🌟 Active Mode: Compute exact countdown time remaining
+            let remainingMs = max(0, end - currentPlaybackMs)
+            let remainingSeconds = remainingMs / 1000
+            let minutes = remainingSeconds / 60
+            let seconds = remainingSeconds % 60
+            
+            // Returns standard media string format like: "- 2:14"
+            return String(format: "- %d:%02d", minutes, seconds)
+        } else {
+            // Standard Inactive Row Layout
+            let diffSeconds = max(0, (end - start) / 1000)
+            if diffSeconds == 0 { return "10m" }
+            return "\(diffSeconds / 60)m"
+        }
     }
 }

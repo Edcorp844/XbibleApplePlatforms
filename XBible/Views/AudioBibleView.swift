@@ -8,8 +8,12 @@ import SwiftUI
 import XbibleEngine
 
 struct AudioBibleView: View {
-    @StateObject private var viewModel = AudioBibleViewModel()
     @State private var showLibrarySheet = false
+    @StateObject private var viewModel: AudioBibleViewModel
+
+    init(engine: AudioEngine) {
+        _viewModel = StateObject(wrappedValue: AudioBibleViewModel(engine: engine))
+    }
     
     // Cross-platform artwork mapping resolver
     @ViewBuilder
@@ -40,8 +44,9 @@ struct AudioBibleView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ))
+            .aspectRatio(contentMode: .fit)
             .overlay(
-                Image(systemName: "book.closed.fill")
+                Image(systemName: "headphones")
                     .font(.system(size: 60))
                     .foregroundStyle(.white.opacity(0.6))
             )
@@ -54,19 +59,19 @@ struct AudioBibleView: View {
                     // --- 1. DYNAMIC MATTE BACKGROUND GRADIENT ---
                     LinearGradient(
                         colors: viewModel.backgroundGradientColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .bottomTrailing,
+                        endPoint: .topLeading
                     )
                     .ignoresSafeArea()
                     .overlay(
                         Color.black
-                            .opacity(0.45) // Dark overlay to match the deep tone of the screenshot
+                            .opacity(0.45)
                             .ignoresSafeArea()
                     )
                     .animation(.easeInOut(duration: 0.6), value: viewModel.backgroundGradientColors)
                     
                     // --- 2. ASYMMETRICAL TWO-COLUMN DESKTOP SCREEN LAYOUT ---
-                    HStack(spacing: 48) {
+                    HStack(spacing: 54) {
                         
                         // ================= LEFT SIDE PANEL: PLAYER CORE =================
                         VStack(alignment: .leading, spacing: 0) {
@@ -80,7 +85,7 @@ struct AudioBibleView: View {
                                 .padding(.bottom, 28)
                             
                             // Date metadata text tag if applicable
-                            Text(viewModel.selectedModule?.metadata?.language ?? "") // Placeholder timestamp matching design screenshot
+                            Text(viewModel.selectedModule?.metadata?.language ?? "")
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundStyle(.white.opacity(0.4))
@@ -98,36 +103,46 @@ struct AudioBibleView: View {
                                         .font(.system(size: 15, weight: .medium))
                                         .foregroundStyle(.white.opacity(0.6))
                                 }
-                                
+                                    
                                 Spacer()
-                                
-                                // Menu Context Button Dot
-                                Button(action: { showLibrarySheet = true }) {
-                                    Image(systemName: "ellipsis.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.white.opacity(0.5))
+                                    
+                                // 🌟 FIX: Pointed directly to viewModel lifecycle and fixed the forward skip bug
+                                Button(action: {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        viewModel.stopPlayback()
+                                    }
+                                }) {
+                                    Image(systemName: "stop.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.white.opacity(0.6))
                                 }
                                 .buttonStyle(.plain)
+                                .help("Stop and clear playing module")
                             }
                             .padding(.bottom, 20)
                             
                             // Scrubbing Timeline Slider Block
                             VStack(spacing: 6) {
-                                // Simplified track bar mirroring screenshot style
                                 let duration = Double(viewModel.selectedModule?.metadata?.durationMs ?? 3600000)
-                                let current = Double(viewModel.playbackState?.currentTimeMs ?? 2945000) // 49:05 matching photo context
+                                let current = Double(viewModel.playbackState?.currentTimeMs ?? 0)
+                                let isAudioPlaying = viewModel.playbackState?.isPlaying ?? false
                                 
-                                //Slider(value: .constant(current), in: 0...duration)
-                                AnimatedCustomSlider(value: .constant(current), range: 0...duration)
+                                AnimatedCustomSlider(
+                                    value: Binding<Double>(
+                                        get: { current },
+                                        set: { newValue in
+                                            // 🌟 PIPELINE SEEK OUTBOUND: Routed cleanly via viewModel wrapper execution
+                                            viewModel.seekToTime(ms: Int64(newValue))
+                                        }
+                                    ),
+                                    range: 0...duration,
+                                    isActive: isAudioPlaying
+                                )
                                     
-                                    //.accentColor(.white.opacity(0.8))
-                                    //.controlSize(.large)
-                                    
-                                
                                 HStack {
                                     Text(formatTime(ms: Int64(current)))
                                     Spacer()
-                                    Text("-" + formatTime(ms: Int64(duration - current)))
+                                    Text("-" + formatTime(ms: Int64(max(0, duration - current))))
                                 }
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.white.opacity(0.4))
@@ -137,17 +152,51 @@ struct AudioBibleView: View {
                             // Media Control Transport Strip
                             HStack(spacing: 0) {
                                 Button(action: {}) { Text("1 x").font(.footnote).bold() }
+                                
                                 Spacer()
-                                Button(action: {}) { Image(systemName: "gobackward.15").font(.title).bold() }
-                                Spacer()
-                                Button(action: { viewModel.togglePlayback() }) {
-                                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                                        .font(.largeTitle).bold()
+                                
+                                // 🌟 BACKWARD SKIP 15S: Redirected to viewModel wrapper pipeline directly
+                                Button(action: {
+                                    viewModel.skipBackward()
+                                }) {
+                                    Image(systemName: "gobackward.15").font(.title2).bold()
                                 }
+                                
                                 Spacer()
-                                Button(action: {}) { Image(systemName: "goforward.30").font(.title).bold() }
+                                    
+                                Button(action: {
+                                    viewModel.togglePlayback()
+                                }) {
+                                    Image(systemName: (viewModel.playbackState?.isPlaying ?? false) ? "pause.fill" : "play.fill")
+                                        .font(.title).bold()
+                                }
+                                    
                                 Spacer()
-                                Button(action: {}) { Image(systemName: "repeat").font(.title3) }
+                                
+                                // 🌟 FORWARD SKIP 30S: Redirected to viewModel wrapper pipeline directly
+                                Button(action: {
+                                    viewModel.skipForward()
+                                }) {
+                                    Image(systemName: "goforward.30").font(.title2).bold()
+                                }
+                                
+                                Spacer()
+                                
+                                // 🌟 DYNAMIC REPEAT MODE CYCLE CONTROL: Updated properties syntax to match safe internal mappings
+                                let currentRepeat = viewModel.playbackState?.repeatMode ?? .off
+                                Button(action: {
+                                    let nextMode: RepeatMode
+                                    switch currentRepeat {
+                                    case .off: nextMode = .one
+                                    case .one: nextMode = .all
+                                    case .all: nextMode = .off
+                                    }
+                                    viewModel.setRepeatMode(mode: nextMode)
+                                }) {
+                                    Image(systemName: currentRepeat == .one ? "repeat.1" : "repeat")
+                                        .font(.title3)
+                                        .foregroundStyle(currentRepeat == .off ? .white.opacity(0.4) : .cyan)
+                                }
                             }
                             .foregroundStyle(.white.opacity(0.8))
                             .buttonStyle(.plain)
@@ -155,64 +204,59 @@ struct AudioBibleView: View {
                             
                             Spacer()
                         }
-                        .frame(width: min(geometry.size.width * 0.38, 340))
+                        .frame(width: min(geometry.size.width * 0.36, 320))
+                        .frame(maxHeight: .infinity)
                         
                         // ================= RIGHT SIDE PANEL: CONTENT STREAM =================
-                        VStack(alignment: .leading, spacing: 20) {
-//                            
-//                            // Context Header Box Layout (e.g., Chapter details block)
-//                            HStack {
-//                                VStack(alignment: .leading, spacing: 4) {
-//                                    Text("Power of Tongues")
-//                                        .font(.system(size: 14, weight: .bold))
-//                                        .foregroundStyle(.white)
-//                                    Text("Chapter 5 of 6")
-//                                        .font(.system(size: 12))
-//                                        .foregroundStyle(.white.opacity(0.5))
-//                                }
-//                                Spacer()
-//                                Image(systemName: "chevron.down")
-//                                    .font(.caption)
-//                                    .foregroundStyle(.white.opacity(0.5))
-//                            }
-//                            .padding(.horizontal, 16)
-//                            .padding(.vertical, 12)
-//                            .background(Color.white.opacity(0.08))
-//                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-//                            .padding(.top, 40)
-                        
-                        InteractiveNavigationCardView(viewModel:    AudioBibleViewModel())
-                            
-                            // Layout Carousel Pagination Indicator Dots
-                            HStack(spacing: 8) {
-                                Circle().fill(.white).frame(width: 7, height: 7)
-                                Circle().fill(.white).frame(width: 7, height: 7)
-                                Circle().fill(.white.opacity(0.25)).frame(width: 7, height: 7)
-                            }
-                            .padding(.leading, 4)
-                            
-                            // Multi-Line Scrollable Structural Verse Engine Layout Container
-                            ScrollView(showsIndicators: false) {
-                                VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ZStack(alignment: .topLeading) {
+                                // 1. UNDERLAY LAYER: Scrollable Content & Pagination Indicators
+                                VStack(alignment: .leading, spacing: 20) {
                                     
-                                    // Primary Synchronized Active Verse Paragraph Blocks
-                                    if let activeText = viewModel.playbackState?.activeText, !activeText.isEmpty {
-                                        Text(activeText)
-                                            .font(.system(size: 23, weight: .medium, design: .serif))
-                                            .foregroundStyle(.white)
-                                            .lineSpacing(8)
-                                            .multilineTextAlignment(.leading)
-                                    } else {
-                                        Text("")
+                                    // Layout Carousel Pagination Indicator Dots
+                                    HStack(spacing: 8) {
+                                        Circle().fill(.white).frame(width: 7, height: 7)
+                                        Circle().fill(.white).frame(width: 7, height: 7)
+                                        Circle().fill(.white.opacity(0.25)).frame(width: 7, height: 7)
+                                    }
+                                    .padding(.leading, 4)
+                                    
+                                    // Multi-Line Scrollable Structural Verse Engine Layout Container
+                                    ScrollView(showsIndicators: false) {
+                                        VStack(alignment: .leading, spacing: 24) {
+                                            if let activeText = viewModel.playbackState?.activeText, !activeText.isEmpty {
+                                                Text(activeText)
+                                                    .font(.system(size: 23, weight: .medium, design: .serif))
+                                                    .foregroundStyle(.white)
+                                                    .lineSpacing(8)
+                                                    .multilineTextAlignment(.leading)
+                                            } else {
+                                                Text("Select a module or chapter to begin reading.")
+                                                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                                                    .foregroundStyle(.white.opacity(0.3))
+                                            }
+                                        }
+                                        .padding(.trailing, 10)
+                                        .padding(.bottom, 80)
                                     }
                                 }
-                                .padding(.trailing, 10)
-                                .padding(.bottom, 60)
+                                .padding(.top, 74)
+                                
+                                // 2. OVERLAY LAYER: Floating Interactive Card
+                                InteractiveNavigationCardView(viewModel: viewModel)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(.ultraThinMaterial)
+                                            .shadow(color: .black.opacity(0.3), radius: 15, x: 0, y: 8)
+                                    )
+                                    .zIndex(1)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(maxHeight: .infinity)
                     }
-                    .padding(.horizontal, 40)
+                    .frame(width: geometry.size.width * 0.88, height: geometry.size.height * 0.84)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                     
                     // --- 3. FLOATING ACTION HUD (Bottom Right Corner Buttons) ---
                     VStack {
@@ -232,8 +276,8 @@ struct AudioBibleView: View {
                             .buttonStyle(.plain)
                             .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
                         }
-                        .padding(.trailing, 32)
-                        .padding(.bottom, 32)
+                        .padding(.trailing, 40)
+                        .padding(.bottom, 40)
                     }
                 }
             }
@@ -245,11 +289,9 @@ struct AudioBibleView: View {
     }
     
     private func formatTime(ms: Int64) -> String {
-        let totalSeconds = ms / 1000
+        let totalSeconds = max(0, ms / 1000)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
-// --- CATALOG VIEW EXTENSION ---
-

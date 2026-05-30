@@ -5,6 +5,8 @@ struct AnimatedCustomSlider: View {
     let range: ClosedRange<Double>
     
     @State private var isInteracting = false
+    // 🌟 Added default value so parent views aren't forced to pass it if they don't want to
+    var isActive: Bool = true
     @GestureState private var isDragging = false
     
     var body: some View {
@@ -18,31 +20,32 @@ struct AnimatedCustomSlider: View {
                 // Background Track
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
-                    .frame(height: isInteracting ? 24 : 8) // Made slightly taller to fit text nicely
+                    .frame(height: isInteracting ? 24 : 8)
                 
                 // Active Progress Fill
                 Capsule()
-                    .fill(.white)
+                    .fill(isActive ? Color.white : Color.gray)
                     .frame(width: CGFloat(currentPercentage) * width, height: isInteracting ? 24 : 8)
                 
                 // Embedded Timestamp Text (Only visible during expand/hold)
                 if isInteracting {
                     Text(formatTime(value))
                         .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.black) // Reads cleanly against the white fill
-                        .colorInvert() // Inverts if your master system theme changes it
+                        .foregroundColor(.black)
+                        .colorInvert()
                         .padding(.leading, 8)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
             .contentShape(Rectangle())
+            // 🌟 FIX: Use standard conditional modifier evaluation rather than a broken inline "if" block
             .gesture(
+                isActive ?
                 DragGesture(minimumDistance: 0)
                     .updating($isDragging) { _, state, _ in
                         state = true
                     }
                     .onChanged { gesture in
-                        // Forces immediate visual expansion on initial mouse down click
                         if !isInteracting {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                                 isInteracting = true
@@ -56,17 +59,16 @@ struct AnimatedCustomSlider: View {
                         self.value = range.lowerBound + (clampedPercentage * rangeLength)
                     }
                     .onEnded { _ in
-                        // Shrinks back down cleanly structural the instant mouse button releases
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                             isInteracting = false
                         }
                     }
+                : nil // Returns no gesture interaction when deactivated
             )
         }
         .frame(height: 24)
     }
     
-    // Helper to format raw doubles (seconds) into a clean digital readout
     private func formatTime(_ timeInSeconds: Double) -> String {
         let totalSeconds = Int(timeInSeconds)
         let minutes = totalSeconds / 60
