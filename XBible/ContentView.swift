@@ -13,50 +13,45 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var wrapper: SwordEngineWrapper
     
-    @State private var installedModuleCategories: Set<String> = []
-    
     var body: some View {
-        NavigationSplitView {
-            List(selection: $wrapper.selectedSidebarItem) {
+        VStack(spacing: 0) {
+            // 1. The Global TabView managing the Sidebar Navigation Layout
+            TabView(selection: $wrapper.selectedSidebarItem) {
                 
                 // --- MAIN SECTION ---
-                Section {
-                    NavigationLink(value: SidebarItem.study) {
-                        Label("Study", systemImage: "book")
+                Tab("Study", systemImage: "book", value: SidebarItem.study) {
+                    DetailView(selection: .study)
+                }
+                
+                Tab("Store", systemImage: "cart", value: SidebarItem.store) {
+                    DetailView(selection: .store)
+                }
+                
+                // --- TOOLS SECTION ---
+                TabSection("Tools") {
+                    Tab("Timeline", systemImage: "calendar.day.timeline.left", value: SidebarItem.bibleTimeline) {
+                        DetailView(selection: .bibleTimeline)
                     }
-                    NavigationLink(value: SidebarItem.store) {
-                        Label("Store", systemImage: "cart")
+                    Tab("Audio Bible", systemImage: "speaker.wave.2", value: SidebarItem.audioBible) {
+                        DetailView(selection: .audioBible)
+                    }
+                    Tab("Biblical Maps", systemImage: "map", value: SidebarItem.maps) {
+                        DetailView(selection: .maps)
                     }
                 }
-                .listRowSeparator(.hidden)
-
-                // --- TOOLS SECTION (Persistent & Collapsible) ---
-                Section(header: SidebarHeader(title: "Tools")) {
-                    NavigationLink(value: SidebarItem.bibleTimeline) {
-                        Label("Timeline", systemImage: "calendar.day.timeline.left")
-                    }
-                    NavigationLink(value: SidebarItem.audioBible) {
-                        Label("Audio Bible", systemImage: "speaker.wave.2")
-                    }
-                    NavigationLink(value: SidebarItem.maps) {
-                        Label("Biblical Maps", systemImage: "map")
-                    }
-                }
-
-                // --- LIBRARY SECTION (Dynamic based on installed modules) ---
-                Section(header: SidebarHeader(title: "Library")) {
-                    let availableCategories = getAvailableCategories()
-                    ForEach(availableCategories, id: \.self) { item in
-                        NavigationLink(value: item) {
-                            Label(item.title, systemImage: item.icon)
+                
+                // --- LIBRARY SECTION (Dynamic) ---
+                TabSection("Library") {
+                    ForEach(getAvailableCategories(), id: \.self) { item in
+                        Tab(item.title, systemImage: item.icon, value: item) {
+                            DetailView(selection: item)
                         }
                     }
                 }
             }
-            .listStyle(.sidebar)
-            .navigationTitle("XBible")
-        } detail: {
-            DetailView(selection: wrapper.selectedSidebarItem)
+            // 2. Instructs macOS/iPadOS to render this TabView as a standard Sidebar split layout
+            .tabViewStyle(.sidebarAdaptable)
+                
         }
         .onAppear {
             if wrapper.isReady {
@@ -73,7 +68,6 @@ struct ContentView: View {
     // MARK: - Logic
     
     private func getAvailableCategories() -> [SidebarItem] {
-        // Filter SidebarItem cases to only include those with installed modules
         return SidebarItem.allCases.filter { item in
             let nonLibraryItems: [SidebarItem] = [.all, .study, .store, .bibleTimeline, .audioBible, .maps]
             guard !nonLibraryItems.contains(item) else { return false }
@@ -84,21 +78,3 @@ struct ContentView: View {
 }
 
 // MARK: - Custom UI Components
-
-struct SidebarHeader: View {
-    let title: String
-    var body: some View {
-        Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(.secondary)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
-    }
-}
-
-
-#Preview{
-    let engineWrapper = SwordEngineWrapper()
-    ContentView()
-        .environmentObject(engineWrapper)
-}

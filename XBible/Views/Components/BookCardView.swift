@@ -52,7 +52,7 @@ struct BookCardView: View {
                         Button(role: .destructive, action: {
                             // TODO: Implement delete
                             print("Delete \(module.name)")
-                            let engine = XbibleEngine.XBibleEngine().uninstallModuleAsync(moduleName: module.name)
+                            _ = XbibleEngine.XBibleEngine().uninstallModuleAsync(moduleName: module.name)
                         }) {
                             Label("Delete", systemImage: "trash")
                         }
