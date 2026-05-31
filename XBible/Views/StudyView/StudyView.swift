@@ -200,6 +200,7 @@ struct StudyView: View {
                 }
             }
         }
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
         .backgroundStyle(.clear)
         .onChange(of: wrapper.selectedModule) { _ in updateBooks() }
         .onChange(of: wrapper.selectedBook) { _ in

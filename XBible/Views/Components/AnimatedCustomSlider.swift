@@ -4,9 +4,12 @@ struct AnimatedCustomSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     
-    @State private var isInteracting = false
-    // 🌟 Added default value so parent views aren't forced to pass it if they don't want to
+    // 🌟 CUSTOM HIGHS/LOWS CONFIGURATION PASSES
+    var idleHeight: CGFloat = 8
+    var interactingHeight: CGFloat = 24
     var isActive: Bool = true
+    
+    @State private var isInteracting = false
     @GestureState private var isDragging = false
     
     var body: some View {
@@ -20,25 +23,14 @@ struct AnimatedCustomSlider: View {
                 // Background Track
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
-                    .frame(height: isInteracting ? 24 : 8)
+                    .frame(height: isInteracting ? interactingHeight : idleHeight)
                 
                 // Active Progress Fill
                 Capsule()
                     .fill(isActive ? Color.white : Color.gray)
-                    .frame(width: CGFloat(currentPercentage) * width, height: isInteracting ? 24 : 8)
-                
-                // Embedded Timestamp Text (Only visible during expand/hold)
-                if isInteracting {
-                    Text(formatTime(value))
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
-                        .colorInvert()
-                        .padding(.leading, 8)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
+                    .frame(width: CGFloat(currentPercentage) * width, height: isInteracting ? interactingHeight : idleHeight)
             }
             .contentShape(Rectangle())
-            // 🌟 FIX: Use standard conditional modifier evaluation rather than a broken inline "if" block
             .gesture(
                 isActive ?
                 DragGesture(minimumDistance: 0)
@@ -63,10 +55,11 @@ struct AnimatedCustomSlider: View {
                             isInteracting = false
                         }
                     }
-                : nil // Returns no gesture interaction when deactivated
+                : nil
             )
         }
-        .frame(height: 24)
+        // 🌟 Ensures the bounding geometry safely accommodates whichever height is larger
+        .frame(height: max(idleHeight, interactingHeight))
     }
     
     private func formatTime(_ timeInSeconds: Double) -> String {

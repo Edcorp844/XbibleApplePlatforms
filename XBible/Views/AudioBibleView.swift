@@ -9,10 +9,10 @@ import XbibleEngine
 
 struct AudioBibleView: View {
     @State private var showLibrarySheet = false
-    @StateObject private var viewModel: AudioBibleViewModel
+    @ObservedObject var viewModel: AudioBibleViewModel
 
-    init(engine: AudioEngine) {
-        _viewModel = StateObject(wrappedValue: AudioBibleViewModel(engine: engine))
+    init(viewModel: AudioBibleViewModel) {
+        self.viewModel = viewModel
     }
     
     // Cross-platform artwork mapping resolver
@@ -140,9 +140,9 @@ struct AudioBibleView: View {
                                 )
                                     
                                 HStack {
-                                    Text(formatTime(ms: Int64(current)))
+                                    Text(viewModel.formatTime(ms: Int64(current)))
                                     Spacer()
-                                    Text("-" + formatTime(ms: Int64(max(0, duration - current))))
+                                    Text("-" + viewModel.formatTime(ms: Int64(max(0, duration - current))))
                                 }
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.white.opacity(0.4))
@@ -150,58 +150,7 @@ struct AudioBibleView: View {
                             .padding(.bottom, 24)
                             
                             // Media Control Transport Strip
-                            HStack(spacing: 0) {
-                                Button(action: {}) { Text("1 x").font(.footnote).bold() }.disabled(viewModel.selectedModule == nil)
-                                
-                                Spacer()
-                                
-                                // 🌟 BACKWARD SKIP 15S: Redirected to viewModel wrapper pipeline directly
-                                Button(action: {
-                                    viewModel.skipBackward()
-                                }) {
-                                    Image(systemName: "gobackward.15").font(.title2).bold()
-                                }.disabled(viewModel.selectedModule == nil)
-                                
-                                Spacer()
-                                    
-                                Button(action: {
-                                    viewModel.togglePlayback()
-                                }) {
-                                    Image(systemName: (viewModel.playbackState?.isPlaying ?? false) ? "pause.fill" : "play.fill")
-                                        .font(.title).bold()
-                                }.disabled(viewModel.selectedModule == nil)
-                                    
-                                Spacer()
-                                
-                                // 🌟 FORWARD SKIP 30S: Redirected to viewModel wrapper pipeline directly
-                                Button(action: {
-                                    viewModel.skipForward()
-                                }) {
-                                    Image(systemName: "goforward.30").font(.title2).bold()
-                                }.disabled(viewModel.selectedModule == nil)
-                                
-                                Spacer()
-                                
-                                // 🌟 DYNAMIC REPEAT MODE CYCLE CONTROL: Updated properties syntax to match safe internal mappings
-                                let currentRepeat = viewModel.playbackState?.repeatMode ?? .off
-                                Button(action: {
-                                    let nextMode: RepeatMode
-                                    switch currentRepeat {
-                                    case .off: nextMode = .one
-                                    case .one: nextMode = .all
-                                    case .all: nextMode = .off
-                                    }
-                                    viewModel.setRepeatMode(mode: nextMode)
-                                }) {
-                                    Image(systemName: currentRepeat == .one ? "repeat.1" : "repeat")
-                                        .font(.title3)
-                                        .foregroundStyle(currentRepeat == .off ? .white.opacity(0.4) : .cyan)
-                                }.disabled(viewModel.selectedModule == nil)
-                            }
-                            .foregroundStyle(.white.opacity(0.8))
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 10)
-                            
+                            MediaControls(viewModel: viewModel)
                             Spacer()
                         }
                         .frame(width: min(geometry.size.width * 0.36, 320))
@@ -240,7 +189,6 @@ struct AudioBibleView: View {
                                                             // 2. Loop directly over the child verse nodes inside this chapter
                                                             ForEach(chapter.childrenNodes ?? [], id: \.stableId) { sentenceNode in
                                                                 
-                                                                // 🌟 FIX 1: Safely isolate local states to prevent SwiftUI type inference breakdown
                                                                 let activeTextString = viewModel.playbackState?.activeText ?? ""
                                                                 let currentVerseText = sentenceNode.text ?? ""
                                                                 
@@ -273,7 +221,6 @@ struct AudioBibleView: View {
                                                             }
                                                         }
                                                     }
-                                                    // 🌟 FIX 2: Relocated globally to intercept updates across all data matrices instantly
                                                     .onChange(of: viewModel.playbackState?.activeText) { newValue in
                                                         guard let incomingText = newValue else { return }
                                                         
@@ -419,12 +366,5 @@ struct AudioBibleView: View {
                 LibraryCatalogView(viewModel: viewModel)
             }
         }
-    }
-    
-    private func formatTime(ms: Int64) -> String {
-        let totalSeconds = max(0, ms / 1000)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }

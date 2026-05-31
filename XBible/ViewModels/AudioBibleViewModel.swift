@@ -10,11 +10,13 @@ public class AudioBibleViewModel: ObservableObject {
     // --- PUBLISHED UI STATES ---
     @Published public var navigationTreeRoot: AudioNode? = nil
     @Published public var selectedNodeId: String? = nil
+    @Published public var selectedNodeTitle: String? = nil
     @Published public var playbackState: PlaybackState? = nil
     @Published public var isLoading: Bool = false
     @Published public var selectedModule: AudioModuleInfo? = nil
     @Published public var decodedArtwork: NSImage? = nil // Use UIImage if targeting iOS/UIKit instead of macOS
     @Published public var backgroundGradientColors: [Color] = [Color.black]
+    
     
     // --- PRIVATE IMMUTABLE MEMORY CACHE ---
     private var flattenedChaptersCache: [AudioNode] = []
@@ -32,6 +34,24 @@ public class AudioBibleViewModel: ObservableObject {
     
     public var liveAudioVolume: CGFloat {
         return player?.getLiveAudioLevel() ?? 0.1
+    }
+    
+    public var currentActiveTitle: String {
+        let chapters = cachedChaptersList
+        if let matchingChapter = chapters.first(where: { $0.id == selectedNodeId }) {
+            return matchingChapter.title
+        }
+        return selectedModule?.metadata?.displayTitle
+            ?? selectedModule?.fileName
+            ?? ""
+    }
+
+    public var currentActiveSubtitle: String {
+        let chapters = cachedChaptersList
+        if let idx = chapters.firstIndex(where: { $0.id == selectedNodeId }) {
+            return "Chapter \(idx + 1) of \(chapters.count)"
+        }
+        return ""
     }
     
     public func selectModule(_ module: AudioModuleInfo) {
@@ -176,6 +196,7 @@ public class AudioBibleViewModel: ObservableObject {
         // Point track marker to the primary row item context if null
         if self.selectedNodeId == nil {
             self.selectedNodeId = self.flattenedChaptersCache.first?.id
+            self.selectedNodeTitle = self.flattenedChaptersCache.first?.title
         }
     }
     
@@ -206,6 +227,14 @@ public class AudioBibleViewModel: ObservableObject {
             return idx + 1
         }
         return 1
+    }
+    
+    // ------ UTIL--------------
+    public func formatTime(ms: Int64) -> String {
+        let totalSeconds = max(0, ms / 1000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

@@ -19,11 +19,11 @@ struct InteractiveNavigationCardView: View {
             }) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(currentActiveTitle)
+                        Text(viewModel.currentActiveTitle)
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                         
-                        Text(currentActiveSubtitle)
+                        Text(viewModel.currentActiveSubtitle)
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))
                     }
@@ -84,24 +84,8 @@ struct InteractiveNavigationCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
     
-    // MARK: - Safe Non-Allocating State Lookups
-    private var currentActiveTitle: String {
-        let chapters = viewModel.cachedChaptersList
-        if let matchingChapter = chapters.first(where: { $0.id == viewModel.selectedNodeId }) {
-            return matchingChapter.title
-        }
-        return viewModel.selectedModule?.metadata?.displayTitle
-            ?? viewModel.selectedModule?.fileName
-            ?? "Select Audio Module"
-    }
 
-    private var currentActiveSubtitle: String {
-        let chapters = viewModel.cachedChaptersList
-        if let idx = chapters.firstIndex(where: { $0.id == viewModel.selectedNodeId }) {
-            return "Chapter \(idx + 1) of \(chapters.count)"
-        }
-        return "Select Chapter"
-    }
+    
 }
 
 // MARK: - LIGHTWEIGHT EXTRACTED ROW VIEW
