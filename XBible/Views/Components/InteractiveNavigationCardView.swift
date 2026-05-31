@@ -50,6 +50,7 @@ struct InteractiveNavigationCardView: View {
                                 ForEach(chapters, id: \.stableId) { chapter in
                                     ChapterRowView(
                                         chapter: chapter,
+                                        viewModel: viewModel,
                                         chapterIndex: viewModel.getChapterIndex(for: chapter.id),
                                         isSelected: viewModel.selectedNodeId == chapter.id,
                                         currentPlaybackMs: viewModel.playbackState?.currentTimeMs ?? 0, // 🌟 Feeds current clock digit downstream
@@ -106,18 +107,18 @@ struct InteractiveNavigationCardView: View {
 // MARK: - LIGHTWEIGHT EXTRACTED ROW VIEW
 struct ChapterRowView: View {
     let chapter: AudioNode
+    let viewModel: AudioBibleViewModel
     let chapterIndex: Int
     let isSelected: Bool
-    let currentPlaybackMs: Int64 // Pass the live timeline tracker down from the view model
+    let currentPlaybackMs: Int64
     let onSelect: () -> Void
     
-    @State private var wavePhase: Double = 0.0
     
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
                 if isSelected {
-                    AudioWaveformIndicator()
+                    AudioWaveIndicator(currentVolume: viewModel.liveAudioVolume)
                 } else {
                     Text("\(chapterIndex)")
                         .font(.system(size: 13, design: .monospaced))

@@ -115,7 +115,7 @@ struct AudioBibleView: View {
                                     Image(systemName: "stop.circle.fill")
                                         .font(.title2)
                                         .foregroundStyle(.white.opacity(0.6))
-                                }
+                                }.disabled(viewModel.selectedModule == nil)
                                 .buttonStyle(.plain)
                                 .help("Stop and clear playing module")
                             }
@@ -151,7 +151,7 @@ struct AudioBibleView: View {
                             
                             // Media Control Transport Strip
                             HStack(spacing: 0) {
-                                Button(action: {}) { Text("1 x").font(.footnote).bold() }
+                                Button(action: {}) { Text("1 x").font(.footnote).bold() }.disabled(viewModel.selectedModule == nil)
                                 
                                 Spacer()
                                 
@@ -160,7 +160,7 @@ struct AudioBibleView: View {
                                     viewModel.skipBackward()
                                 }) {
                                     Image(systemName: "gobackward.15").font(.title2).bold()
-                                }
+                                }.disabled(viewModel.selectedModule == nil)
                                 
                                 Spacer()
                                     
@@ -169,7 +169,7 @@ struct AudioBibleView: View {
                                 }) {
                                     Image(systemName: (viewModel.playbackState?.isPlaying ?? false) ? "pause.fill" : "play.fill")
                                         .font(.title).bold()
-                                }
+                                }.disabled(viewModel.selectedModule == nil)
                                     
                                 Spacer()
                                 
@@ -178,7 +178,7 @@ struct AudioBibleView: View {
                                     viewModel.skipForward()
                                 }) {
                                     Image(systemName: "goforward.30").font(.title2).bold()
-                                }
+                                }.disabled(viewModel.selectedModule == nil)
                                 
                                 Spacer()
                                 
@@ -196,7 +196,7 @@ struct AudioBibleView: View {
                                     Image(systemName: currentRepeat == .one ? "repeat.1" : "repeat")
                                         .font(.title3)
                                         .foregroundStyle(currentRepeat == .off ? .white.opacity(0.4) : .cyan)
-                                }
+                                }.disabled(viewModel.selectedModule == nil)
                             }
                             .foregroundStyle(.white.opacity(0.8))
                             .buttonStyle(.plain)
@@ -224,18 +224,149 @@ struct AudioBibleView: View {
                                     // Multi-Line Scrollable Structural Verse Engine Layout Container
                                     ScrollView(showsIndicators: false) {
                                         VStack(alignment: .leading, spacing: 24) {
-                                            if let activeText = viewModel.playbackState?.activeText, !activeText.isEmpty {
-                                                Text(activeText)
-                                                    .font(.system(size: 23, weight: .medium, design: .serif))
-                                                    .foregroundStyle(.white)
-                                                    .lineSpacing(8)
-                                                    .multilineTextAlignment(.leading)
+                                            if let currentModule = viewModel.selectedModule {
+                                               
+                                                ScrollViewReader { proxy in
+                                                    VStack(alignment: .leading, spacing: 28) { // Slightly wider spacing between paragraphs
+                                                        // 1. Loop through your top-level chapters
+                                                        ForEach(viewModel.cachedChaptersList, id: \.stableId) { chapter in
+                                                            
+                                                            // Subtle, clean Chapter Header breakdown
+                                                            Text(chapter.title.uppercased())
+                                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                                .foregroundColor(.white.opacity(0.2))
+                                                                .padding(.top, 14)
+                                                            
+                                                            // 2. Loop directly over the child verse nodes inside this chapter
+                                                            ForEach(chapter.childrenNodes ?? [], id: \.stableId) { sentenceNode in
+                                                                
+                                                                // 🌟 FIX 1: Safely isolate local states to prevent SwiftUI type inference breakdown
+                                                                let activeTextString = viewModel.playbackState?.activeText ?? ""
+                                                                let currentVerseText = sentenceNode.text ?? ""
+                                                                
+                                                                // Clean whitespace verification to match active spoken subtitles to raw verse text
+                                                                let isActive = !activeTextString.isEmpty &&
+                                                                    activeTextString.trimmingCharacters(in: .whitespacesAndNewlines) == currentVerseText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                                
+                                                                Button(action: {
+                                                                    // Tap navigation to the exact millisecond of this verse
+                                                                    if let timestampMs = sentenceNode.startMs {
+                                                                        viewModel.seekToTime(ms: timestampMs)
+                                                                    }
+                                                                }) {
+                                                                    VStack(alignment: .leading, spacing: 6) {
+                                                                        Text(sentenceNode.title) // e.g. "Verse 1"
+                                                                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                                                                            .foregroundColor(isActive ? .orange.opacity(0.8) : .white.opacity(0.15))
+                                                                        
+                                                                        Text(currentVerseText) // Spoken Scripture content body
+                                                                            .font(.system(size: 23, weight: .medium, design: .serif))
+                                                                            .foregroundColor(isActive ? .white : .white.opacity(0.25))
+                                                                            .lineSpacing(8)
+                                                                            .multilineTextAlignment(.leading)
+                                                                    }
+                                                                    .scaleEffect(isActive ? 1.01 : 1.0)
+                                                                    .blur(radius: isActive ? 0 : 0.3)
+                                                                }
+                                                                .buttonStyle(.plain)
+                                                                .id(sentenceNode.id) // Bind target token for scrolling anchors
+                                                            }
+                                                        }
+                                                    }
+                                                    // 🌟 FIX 2: Relocated globally to intercept updates across all data matrices instantly
+                                                    .onChange(of: viewModel.playbackState?.activeText) { newValue in
+                                                        guard let incomingText = newValue else { return }
+                                                        
+                                                        // Scan the nested layout arrays to match the specific current sentence object
+                                                        if let targetNode = viewModel.cachedChaptersList
+                                                            .flatMap({ $0.childrenNodes ?? [] })
+                                                            .first(where: { ($0.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == incomingText.trimmingCharacters(in: .whitespacesAndNewlines) }) {
+                                                            
+                                                            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                                                                proxy.scrollTo(targetNode.id, anchor: .center)
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             } else {
-                                                Text("Select a module or chapter to begin reading.")
-                                                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                                                    .foregroundStyle(.white.opacity(0.3))
+                                                
+                                                VStack(alignment: .leading, spacing: 16) {
+                                                    ForEach(viewModel.availableModules, id: \.fileName) { module in
+                                                        Button(action: {
+                                                            // Initialize module parsing pipeline on tap
+                                                            viewModel.selectModule(module)
+                                                        }) {
+                                                            HStack(spacing: 14) {
+                                                                Group {
+                                                                    if let data = module.artwork.imageBytes(),
+                                                                       let compiledImage = { () -> NSImage? in
+                                                                           #if os(macOS)
+                                                                           return NSImage(data: data)
+                                                                           #else
+                                                                           return nil // If on iOS/UIKit, replace with: UIImage(data: data)
+                                                                           #endif
+                                                                       }() {
+                                                                        
+                                                                        // Render the extracted cover art image
+                                                                        Image(nsImage: compiledImage) // Use Image(uiImage:) if building for iOS
+                                                                            .resizable()
+                                                                            .scaledToFill()
+                                                                            .frame(width: 50, height: 50)
+                                                                            .cornerRadius(6)
+                                                                            .clipped()
+                                                                    } else {
+                                                                        // Fallback minimalist text badge if cover art bytes are empty or corrupted
+                                                                        Text((module.metadata?.displayTitle ?? "M").prefix(1).uppercased())
+                                                                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                                            .foregroundColor(.white.opacity(0.6))
+                                                                            .frame(width: 36, height: 36)
+                                                                            .background(Color.white.opacity(0.08))
+                                                                            .cornerRadius(6)
+                                                                    }
+                                                                }
+                                                                
+                                                                VStack(alignment: .leading, spacing: 4) {
+                                                                    HStack{
+                                                                        VStack(alignment: .leading, spacing: 4){
+                                                                            Text(module.metadata?.displayTitle ?? "")
+                                                                                .font(.system(size: 14))
+                                                                                .foregroundColor(.white)
+                                                                                .lineLimit(1)
+                                                                                .truncationMode(.tail)
+                                                                            
+                                                                            Text(module.metadata?.description ?? "")
+                                                                                .font(.system(size: 12))
+                                                                                .foregroundColor(.secondary)
+                                                                                .lineLimit(1)
+                                                                                .truncationMode(.tail)
+                                                                            Text(module.metadata?.language ?? "")
+                                                                                .font(.system(size: 12))
+                                                                                .foregroundColor(.secondary)
+                                                                                .lineLimit(1)
+                                                                                .truncationMode(.tail)
+                                                                        }
+                                                                        
+                                                                        Spacer()
+                                                                        Button(action: {
+                                                                            
+                                                                        }) {
+                                                                            Image(systemName: "ellipsis")
+                                                                        }.buttonStyle(.plain)
+                                                                    }
+                                                                    
+                                                                    Divider()
+                                                                }
+                                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                              
+
+                                                            }
+                                                        }
+                                                        .buttonStyle(.plain)
+                                                    }
+                                                }
                                             }
                                         }
+                                        .padding(.horizontal, 16)
                                         .padding(.trailing, 10)
                                         .padding(.bottom, 80)
                                     }
@@ -264,23 +395,25 @@ struct AudioBibleView: View {
                         HStack {
                             Spacer()
                             HStack(spacing: 16) {
-                                Button(action: {}) { Image(systemName: "quote.bubble.fill").font(.subheadline) }
+                                Button(action: {}) { Image(systemName: "quote.bubble.fill").font(.title) }
                                 Divider().background(Color.white.opacity(0.2)).frame(height: 16)
-                                Button(action: { showLibrarySheet = true }) { Image(systemName: "list.bullet").font(.subheadline) }
+                                Button(action: { showLibrarySheet = true }) { Image(systemName: "list.bullet").font(.title) }
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
-                            .background(Color.black.opacity(0.3).background(.ultraThinMaterial))
+                            .glassEffect()
                             .clipShape(Capsule())
                             .foregroundStyle(.white)
                             .buttonStyle(.plain)
                             .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
                         }
+                        
                         .padding(.trailing, 40)
                         .padding(.bottom, 40)
                     }
                 }
             }
+            
             .ignoresSafeArea(.container, edges: [.top, .bottom])
             .sheet(isPresented: $showLibrarySheet) {
                 LibraryCatalogView(viewModel: viewModel)

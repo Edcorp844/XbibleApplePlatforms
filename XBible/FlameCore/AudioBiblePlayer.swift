@@ -13,9 +13,9 @@ public class AudioBiblePlayer: ObservableObject {
     
     @Published var navigationTree: AudioNode?
     @Published var currentPlaybackState: PlaybackState?
-
+    
     public var onStateUpdate: ((PlaybackState) -> Void)?
-
+    
     public init(moduleFilePath: String, engine: AudioEngine) {
         self.rustEngine = engine
         
@@ -25,6 +25,7 @@ public class AudioBiblePlayer: ObservableObject {
             
             let audioData = Data(rawAudioBytes)
             self.audioPlayer = try AVAudioPlayer(data: audioData)
+            self.audioPlayer?.isMeteringEnabled = true
             self.audioPlayer?.prepareToPlay()
             
             rustEngine.seekToTime(targetMs: 0)
@@ -147,6 +148,27 @@ public class AudioBiblePlayer: ObservableObject {
         if let state = rustEngine.getPlaybackState() {
             self.currentPlaybackState = state
             onStateUpdate?(state)
+        }
+    }
+    
+    /// Pulls the live normalized decibel power level from the hardware player (returns 0.0 to 1.0)
+    public func getLiveAudioLevel() -> CGFloat {
+        guard let player = audioPlayer, player.isPlaying else { return 0.1 }
+        
+        player.updateMeters() // Refresh data channels
+        
+        // Grab average power (returns a decibel scale ranging from -160dB up to 0dB max)
+        let power = player.averagePower(forChannel: 0)
+        
+        // Convert the logarithmic decibel scale into a clean linear 0.0 -> 1.0 range
+        let minDb: Float = -60.0
+        if power < minDb {
+            return 0.1
+        } else if power >= 0.0 {
+            return 1.0
+        } else {
+            let index = (power - minDb) / abs(minDb)
+            return CGFloat(index)
         }
     }
     

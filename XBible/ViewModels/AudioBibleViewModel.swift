@@ -30,6 +30,10 @@ public class AudioBibleViewModel: ObservableObject {
         return engine.getAudioModules()
     }
     
+    public var liveAudioVolume: CGFloat {
+        return player?.getLiveAudioLevel() ?? 0.1
+    }
+    
     public func selectModule(_ module: AudioModuleInfo) {
         // 1. Flush past cache matrices immediately to prevent structural cross-contamination
         self.navigationTreeRoot = nil
@@ -84,6 +88,8 @@ public class AudioBibleViewModel: ObservableObject {
         self.player?.play()
     }
     
+    
+    
     // =========================================================================
     // CORE AUDIO TRANSPORT METHOD INTERFACES (Correctly routed through Player)
     // =========================================================================
@@ -104,6 +110,7 @@ public class AudioBibleViewModel: ObservableObject {
     public func stopPlayback() {
         // Route through player wrapper to halt AVAudioPlayer hardware
         player?.stop()
+        self.selectedModule = nil
         forceSynchronousStateUpdate()
     }
     
