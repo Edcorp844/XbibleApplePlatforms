@@ -1,8 +1,8 @@
 //
-//  AudioStoreView.swift
-//  X-Bible
+//   AudioStoreView.swift
+//   X-Bible
 //
-//  Created by Zoe Brooklyn on 6/10/26.
+//   Created by Zoe Brooklyn on 6/10/26.
 //
 
 import SwiftUI
@@ -16,7 +16,6 @@ struct AudioStoreView: View {
     ]
     
     var body: some View {
-        // 🛑 REMOVED: NavigationStack {
         Group {
             if viewModel.isLoading && viewModel.availableModules.isEmpty {
                 VStack(spacing: 12) {
@@ -30,7 +29,7 @@ struct AudioStoreView: View {
                 ContentUnavailableView(
                     "No Modules Available",
                     systemImage: "waveform.badge.exclamationmark",
-                    description: Text("Check your internet connection or pull down to retry.")
+                    description: Text("Check your internet connection or reload the catalog.")
                 )
             } else {
                 ScrollView {
@@ -44,17 +43,30 @@ struct AudioStoreView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                 }
-                .background(Color(.systemGroupedBackground).edgesIgnoringSafeArea(.bottom))
+                .background(storeBackgroundColor.edgesIgnoringSafeArea(.bottom))
             }
         }
         .navigationTitle("Audio Store")
-        // Keep your bar items configuration flat on the inner content view
+        // 🚀 OPTIMIZATION: Conditional platform evaluation wrapper safely guarding iOS styling properties
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .refreshable {
             await viewModel.loadCatalog()
         }
         .task {
             await viewModel.loadCatalog()
+        }
+        // 🚀 OPTIMIZATION: Explicit desktop layout toolstrip for direct reload action
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    Task { await viewModel.loadCatalog() }
+                }) {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .help("Reload store inventory catalog")
+            }
         }
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
@@ -63,9 +75,18 @@ struct AudioStoreView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.errorMessage)
-        // 🛑 REMOVED: }
+    }
+    
+    // --- CROSS-PLATFORM SYSTEM COLOR RESOLVER ---
+    private var storeBackgroundColor: Color {
+        #if os(macOS)
+        return Color(NSColor.windowBackgroundColor)
+        #else
+        return Color(.systemGroupedBackground)
+        #endif
     }
 }
+
 // ─── COMPONENT: ERROR FLOATING BANNER ───
 
 struct ErrorBannerView: View {

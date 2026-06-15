@@ -18,6 +18,10 @@ class StoreViewModel: ObservableObject {
     @Published var isLoading = false
     /// Search filter string
     @Published var searchText: String = ""
+    
+    // MARK: - Pipeline State Mirrors
+    @Published var currentPipelineStep: EngineStep = .initializing
+    @Published var globalSyncProgress: Float = 0.0
 
     // MARK: - Private
 
@@ -59,13 +63,12 @@ class StoreViewModel: ObservableObject {
         self.taskManager = wrapper.storeTaskManager
 
         setupMessageListeners()
+        setupPipelineBindings()
         
         // Ensure the task manager is initialized with the engine and context
         if let engine = self.engine {
             taskManager?.setup(modelContext: modelContext, engine: engine, queue: wrapper.engineQueue)
         }
-        
-        loadStore(wrapper: wrapper)
     }
 
     private func setupMessageListeners() {
@@ -76,6 +79,33 @@ class StoreViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
+    
+    /// Establishes clear pipeline synchronization hooks with the background data thread
+    private func setupPipelineBindings() {
+        guard let manager = taskManager else { return }
+        
+        manager.$currentStep
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] step in
+                guard let self = self else { return }
+                self.currentPipelineStep = step
+                
+                switch step {
+                case .initializing, .fetchingSources, .processingSelection:
+                    self.isLoading = true
+                case .installingModules, .failed, .finished:
+                    self.isLoading = false
+                }
+            }
+            .store(in: &cancellables)
+            
+        manager.$globalProgress
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] progress in
+                self?.globalSyncProgress = progress
+            }
+            .store(in: &cancellables)
+    }
 
     // MARK: - Message Handling
 
@@ -83,14 +113,9 @@ class StoreViewModel: ObservableObject {
         switch message {
         case .sourcesUpdated(let sources):
             self.availableSources = sources
-            self.fetchAllSources()
 
         case .fetchCompleted(let source, let modules):
             self.allRemoteModules[source] = modules
-            // Stop loading once we have data from all sources
-            if allRemoteModules.keys.count >= availableSources.count {
-                self.isLoading = false
-            }
             self.syncAllInstallationStatuses()
 
         case .installProgress(let moduleName, let progress, let status, let downloaded, let total):
@@ -104,7 +129,6 @@ class StoreViewModel: ObservableObject {
 
         case .installCompleted(let moduleName):
             self.installationStates[moduleName] = .installed
-            // Notify other parts of the app that the library has changed
             NotificationCenter.default.post(name: .installationStateChanged, object: nil)
 
         case .installFailed(let moduleName), .installCancelled(let moduleName):
@@ -113,8 +137,6 @@ class StoreViewModel: ObservableObject {
             
         case .fetchFailed(let source):
             print("Failed to fetch modules for source: \(source)")
-            // Potentially increment count anyway to stop the spinner
-            if allRemoteModules.keys.count >= availableSources.count { self.isLoading = false }
 
         default:
             break
@@ -123,28 +145,27 @@ class StoreViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Initial fetch of the repository list
+    /// Initial loading wrapper matching your structural setup invocation
     func loadStore(wrapper: SwordEngineWrapper) {
-        guard let engine = wrapper.engine else { return }
+        guard let _ = wrapper.engine else { return }
         self.isLoading = true
-        taskManager?.fetchSources(engine: engine)
+        taskManager?.startSynchronizationPipeline()
     }
 
-    /// Triggers a fresh download of the module catalogs
+    /// Triggers a clean concurrent download run across all source clusters
     func refreshStore() {
-        guard let engine = engine else { return }
         allRemoteModules.removeAll()
         isLoading = true
-        taskManager?.fetchSources(engine: engine)
+        taskManager?.startSynchronizationPipeline()
     }
 
     /// Installs a module using the background engine to avoid UI hangs
     func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
         guard let engine = wrapper.engine, let taskManager = taskManager else { return }
         
-        // UI feedback: immediately mark as pending
+        // Immediate UI feedback state
         installationStates[module.name] = .pending
-        taskManager.installModule(engine: engine, source: module.source, moduleName: module.name)
+        taskManager.installModule(engine: engine, source: module.source, moduleName: module.name, skipDatabase: false)
     }
 
     /// Stops an active download/installation
@@ -157,7 +178,7 @@ class StoreViewModel: ObservableObject {
     func syncAllInstallationStatuses() {
         guard let taskManager = taskManager else { return }
         
-        taskManager.refreshInstalledModules { [weak self] installedModules in
+        taskManager.refreshInstalledModules { [weak self] (installedModules: [XbibleEngine.SwordModule]) in
             guard let self = self else { return }
             
             let installedNames = Set(installedModules.map { $0.name })
@@ -169,7 +190,6 @@ class StoreViewModel: ObservableObject {
                         self.installationStates[module.name] = .installed
                     }
                 } else {
-                    // If not installed, only reset to idle if we aren't currently installing it or pending
                     let currentState = self.installationStates[module.name]
                     if case .installing = currentState { continue }
                     if currentState == .pending { continue }
@@ -179,22 +199,6 @@ class StoreViewModel: ObservableObject {
                     }
                 }
             }
-        }
-    }
-
-    // MARK: - Private Helpers
-
-    private func fetchAllSources() {
-        guard let engine = engine, let taskManager = taskManager else { return }
-        
-        if availableSources.isEmpty {
-            self.isLoading = false
-            return
-        }
-
-        for source in availableSources {
-            // isSilent: true keeps the UI from flickering while multiple sources load
-            taskManager.fetchModules(engine: engine, source: source.name, isSilent: true)
         }
     }
 }

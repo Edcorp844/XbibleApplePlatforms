@@ -1,5 +1,8 @@
+//
 //  ContentView.swift
 //  XBible
+//
+//  Created by Zoe Brooklyn on 6/12/26.
 //
 
 import SwiftUI
@@ -12,6 +15,7 @@ struct ContentView: View {
     
     private let coreAudioEngine: AudioEngine
     @StateObject private var audioViewModel: AudioBibleViewModel
+    @State private var expandMiniPlayer: Bool = false
     
     init() {
         let engine = AudioEngine()
@@ -20,7 +24,7 @@ struct ContentView: View {
     }
     
     var body: some View {
-        #if os(macOS)
+#if os(macOS)
         // ─────────────────────────────────────────────────────────────────
         //  macOS HIERARCHICAL MATRIX (ZStack Wrapper Root Layout)
         // ─────────────────────────────────────────────────────────────────
@@ -39,18 +43,18 @@ struct ContentView: View {
         .onAppear { refreshEngineIfNeeded() }
         .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
         
-        #else
+#else
         // ─────────────────────────────────────────────────────────────────
         //  iOS MOBILE ARCHITECTURE (Direct TabView Hierarchy Root Layout)
         // ─────────────────────────────────────────────────────────────────
-       TabView(selection: $wrapper.selectedSidebarItem) {
+        TabView(selection: $wrapper.selectedSidebarItem) {
             Tab(value: SidebarItem.study) {
                 NavigationSplitView {
                     DetailView(selection: .study, viewModel: audioViewModel)
                 } detail: {
                     Text("Select Scripture Section")
                 }
-                .navigationSplitViewStyle(.automatic) // Prevents column layout breakdown on iPhone
+                .navigationSplitViewStyle(.automatic)
             } label: {
                 Label("Study", systemImage: "book")
             }
@@ -68,7 +72,7 @@ struct ContentView: View {
             
             Tab(value: SidebarItem.audioBible) {
                 NavigationSplitView {
-                ToolsView(audioViewModel:audioViewModel)
+                    ToolsView(audioViewModel: audioViewModel)
                 } detail: {
                     Text("Select Tool Matrix")
                 }
@@ -98,21 +102,52 @@ struct ContentView: View {
             } label: {
                 Label("Search", systemImage: "magnifyingglass")
             }
-            
         }
-       .tabViewBottomAccessory {
-           AudioMinipPayer(viewModel: audioViewModel)
-       }
-//        .if(audioViewModel.selectedModule != nil) { view in
-//                view.tabViewBottomAccessory {
-//                    AudioMinipPayer(viewModel: audioViewModel)
-//                }
-//            }
+        // FIXED: Route via an explicit accessory structural bridge view
+        // to isolate layout graph modifications away from ContentView root body
+        .if(audioViewModel.selectedModule != nil) { view in
+            view.tabViewBottomAccessory {
+                AudioMiniPayer(
+                    displayTitle: audioViewModel.selectedModule?.metadata?.displayTitle ?? "Audio Chapter",
+                    activeLyricTitle:audioViewModel.currentActiveTitle,
+                    isPlaying:audioViewModel.isPlaying, // Maps safely to our stable primitive boolean
+                    hasSelectedModule: audioViewModel.selectedModule != nil,
+                    artworkImage: audioViewModel.decodedArtwork
+                ) {
+                    audioViewModel.togglePlayback()
+                } onSkipForward: {
+                    audioViewModel.skipForward()
+                }.onTapGesture {
+                    expandMiniPlayer.toggle()
+                }
+            }
+        }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewStyle(.sidebarAdaptable)
         .onAppear { refreshEngineIfNeeded() }
         .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
-        #endif
+        .fullScreenCover(isPresented: $expandMiniPlayer) {
+            ZStack(alignment: .top) {
+                // Core View Layer
+                AudioBibleArtWorkView(viewModel: audioViewModel)
+                
+                // Drag Indicator Capsule with an implicit drag gesture
+                Capsule()
+                    .fill(.primary.secondary)
+                    .frame(width: 50, height: 5)
+                    .padding(.top, 12)
+                    .contentShape(Rectangle()) // Makes the entire top area grabbable
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if value.translation.height > 60 { // Detect pulling down
+                                    expandMiniPlayer = false
+                                }
+                            }
+                    )
+            }
+        }
+#endif
     }
     
     // ─────────────────────────────────────────────────────────────────

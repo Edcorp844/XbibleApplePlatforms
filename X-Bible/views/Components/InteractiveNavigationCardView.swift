@@ -53,7 +53,7 @@ struct InteractiveNavigationCardView: View {
                                         viewModel: viewModel,
                                         chapterIndex: viewModel.getChapterIndex(for: chapter.id),
                                         isSelected: viewModel.selectedNodeId == chapter.id,
-                                        currentPlaybackMs: viewModel.playbackState?.currentTimeMs ?? 0, // 🌟 Feeds current clock digit downstream
+                                        currentPlaybackMs: viewModel.currentTimeMs,
                                         onSelect: {
                                             viewModel.seekToChapter(id: chapter.id)
                                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

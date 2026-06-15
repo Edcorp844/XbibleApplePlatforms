@@ -21,12 +21,14 @@ struct LanguageSection: View {
             if isExpanded {
                 modulesScrollView
                     .transition(.opacity.combined(with: .move(edge: .top)))
+                    .clipped() // Prevents horizontal scroll items from bleeding during frame animation
             }
 
             Divider()
                 .padding(.horizontal, 20)
                 .opacity(0.3)
         }
+        .animation(.easeInOut, value: isExpanded)
     }
 
     // MARK: - Subviews

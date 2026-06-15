@@ -1,28 +1,41 @@
+////
 //  AudioBibleViewModel.swift
 //  XBible
+//
+//  Created by Zoe Brooklyn on 6/12/26.
 //
 
 import SwiftUI
 import Combine
 import XbibleEngine
 
+
+@MainActor
 public class AudioBibleViewModel: ObservableObject {
-    // --- PUBLISHED UI STATES ---
-    @Published public var navigationTreeRoot: AudioNode? = nil
+    
+    // ───── UI State (Published - Throttled) ─────
+    @Published public var selectedModule: AudioModuleInfo? = nil
     @Published public var selectedNodeId: String? = nil
     @Published public var selectedNodeTitle: String? = nil
-    @Published public var playbackState: PlaybackState? = nil
+    @Published public var isPlaying: Bool = false
+    @Published public var currentActiveTitle: String = ""
     @Published public var isLoading: Bool = false
-    @Published public var selectedModule: AudioModuleInfo? = nil
-#if os(macOS)
-    @Published public var decodedArtwork: NSImage? = nil // Use UIImage if targeting iOS/UIKit instead of macOS
-#else
+    
+    #if os(macOS)
+    @Published public var decodedArtwork: NSImage? = nil
+    #else
     @Published public var decodedArtwork: UIImage? = nil
     #endif
+    
     @Published public var backgroundGradientColors: [Color] = [Color.black]
     
+    // ───── Internal Fast State ─────
+    // Marked @protected or nonisolated via plain state properties
+    // to keep background execution channels perfectly unblocked
+    private var internalPlaybackState: PlaybackState?
+    private var lastUIUpdateTime = Date()
     
-    // --- PRIVATE IMMUTABLE MEMORY CACHE ---
+    // ───── Private Cache ─────
     private var flattenedChaptersCache: [AudioNode] = []
     private let engine: AudioEngine
     private var player: AudioBiblePlayer?
@@ -31,199 +44,187 @@ public class AudioBibleViewModel: ObservableObject {
         self.engine = engine
     }
     
-    /// Fetches all currently registered local audio modules from the core engine
     public var availableModules: [AudioModuleInfo] {
-        return engine.getAudioModules()
+        engine.getAudioModules()
     }
     
-    public var liveAudioVolume: CGFloat {
-        return player?.getLiveAudioLevel() ?? 0.1
-    }
-    
-    public var currentActiveTitle: String {
-        let chapters = cachedChaptersList
-        if let matchingChapter = chapters.first(where: { $0.id == selectedNodeId }) {
-            return matchingChapter.title
-        }
-        return selectedModule?.metadata?.displayTitle
-            ?? selectedModule?.fileName
-            ?? ""
-    }
-
     public var currentActiveSubtitle: String {
-        let chapters = cachedChaptersList
-        if let idx = chapters.firstIndex(where: { $0.id == selectedNodeId }) {
-            return "Chapter \(idx + 1) of \(chapters.count)"
+        guard let idx = flattenedChaptersCache.firstIndex(where: { $0.id == selectedNodeId }) else {
+            return ""
         }
-        return ""
+        return "Chapter \(idx + 1) of \(flattenedChaptersCache.count)"
     }
     
+    // MARK: - Module Selection
     public func selectModule(_ module: AudioModuleInfo) {
-        // 1. Flush past cache matrices immediately to prevent structural cross-contamination
-        self.navigationTreeRoot = nil
-        self.flattenedChaptersCache = []
-        self.selectedNodeId = nil
-        self.isLoading = true
+        flattenedChaptersCache = []
+        selectedNodeId = nil
+        selectedNodeTitle = nil
+        isLoading = true
         self.selectedModule = module
+        
+        currentActiveTitle = module.metadata?.displayTitle ?? module.fileName
+        
+        if let data = module.artwork.imageBytes() {
+            #if os(macOS)
+            decodedArtwork = NSImage(data: data)
+            #else
+            decodedArtwork = UIImage(data: data)
+            #endif
+            
+            let colors = module.artwork.extractColors(count: 4)
+            if !colors.isEmpty {
+                backgroundGradientColors = colors.map { c in
+                    Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
+                }
+            }
+        }
         
         let basePath = engine.getAudioModulesPath()
         let fullPath = (basePath as NSString).appendingPathComponent(module.fileName)
         
-        // 2. Setup Cross-Platform Artwork Previews
-        let artwork = module.artwork
-        if let data = artwork.imageBytes() {
-#if os(macOS)
-            self.decodedArtwork = NSImage(data: data)
-#else
-            self.decodedArtwork = UIImage(data: data)
-#endif
-            
-            let extractedRustColors = artwork.extractColors(count: 4)
-            if !extractedRustColors.isEmpty {
-                self.backgroundGradientColors = extractedRustColors.map { rustColor in
-                    Color(red: rustColor.red, green: rustColor.green, blue: rustColor.blue, opacity: rustColor.alpha)
-                }
-            }
+        let newPlayer = AudioBiblePlayer(moduleFilePath: fullPath, engine: engine)
+        self.player = newPlayer
+        
+        loadAndCacheNavigationTree()
+        setupStateListener()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self, self.player != nil else { return }
+            self.player?.play()
+            self.isPlaying = true
+            self.isLoading = false
         }
-        
-        // 3. Initialize Audio Player Target Framework Lifecycle
-        self.player = AudioBiblePlayer(moduleFilePath: fullPath, engine: self.engine)
-        
-        // 4. Decoupled Audio Clock Pipeline Interceptor
-        self.player?.onStateUpdate = { [weak self] state in
-            guard let self = self else { return }
-            
-            // Isolate layout updates to the main execution thread safely
-            DispatchQueue.main.async {
-                self.playbackState = state
-                self.isLoading = false
-                
-                // FIRST LOAD CACHE: Pull the heavy structural layout maps EXACTLY ONCE
-                if self.navigationTreeRoot == nil {
-                    self.loadAndCacheNavigationTree()
-                }
-                
-                // LIGHTWEIGHT CLOCK WATCHER: Track active milestones using scalar primitives
-                self.syncActiveChapter(at: state.currentTimeMs)
-            }
-        }
-        
-        // KICKOFF AUDIO: Explicitly engage audio pipelines right upon module initialization
-        self.player?.play()
     }
     
+    private func setupStateListener() {
+        player?.onStateUpdate = { [weak self] state in
+                guard let self = self else { return }
+                
+                // 🚀 THE FIX: Safely route the update to the MainActor via an async dispatch.
+                // This stops the background worker thread from mutating properties owned by the MainActor.
+                DispatchQueue.main.async {
+                    self.internalPlaybackState = state
+                    
+                    let now = Date()
+                    if now.timeIntervalSince(self.lastUIUpdateTime) > 0.08 { // ~12 updates per second max
+                        self.lastUIUpdateTime = now
+                        self.applyStateToUI(state)
+                    }
+                }
+            }
+    }
     
+    private func applyStateToUI(_ state: PlaybackState) {
+        if self.isPlaying != state.isPlaying {
+            self.isPlaying = state.isPlaying
+        }
+        
+        self.syncActiveChapter(at: state.currentTimeMs)
+    }
     
-    // =========================================================================
-    // CORE AUDIO TRANSPORT METHOD INTERFACES (Correctly routed through Player)
-    // =========================================================================
-    
-    /// Public bridge allowing UI views to manage transport operations without accessing internal properties
+    // MARK: - User Controls (Immediate Response)
     public func togglePlayback() {
         guard let player = self.player else { return }
-        
-        if self.playbackState?.isPlaying == true {
+        if self.isPlaying {
             player.pause()
+            self.isPlaying = false
         } else {
             player.play()
+            self.isPlaying = true
         }
         forceSynchronousStateUpdate()
     }
     
-    /// Completely stops audio playback and terminates the player session active contexts
-    public func stopPlayback() {
-        // Route through player wrapper to halt AVAudioPlayer hardware
-        player?.stop()
-        self.selectedModule = nil
-        forceSynchronousStateUpdate()
-    }
-    
-    /// Advances current playback position forward by 30 seconds
     public func skipForward() {
-        // Route through player wrapper so hardware timeline jumps too
         player?.skipForward()
         forceSynchronousStateUpdate()
     }
     
-    /// Regresses current playback position backward by 15 seconds
     public func skipBackward() {
-        // Route through player wrapper so hardware timeline jumps too
         player?.skipBackward()
         forceSynchronousStateUpdate()
     }
     
-    /// Seeks the media timeline straight to a designated millisecond timestamp
     public func seekToTime(ms: Int64) {
-        //Fixed: Passing raw ms digits directly to avoid the UniFFI constructor layout crash
-        guard let player = self.player else { return }
-        player.seekTo(ms: ms)
+        player?.seekTo(ms: ms)
         forceSynchronousStateUpdate()
     }
     
-    /// Rotates or assigns the target looping mode down onto the core pipeline
+    public func stopPlayback() {
+        player?.stop()
+        selectedModule = nil
+        isPlaying = false
+        forceSynchronousStateUpdate()
+    }
+    
     public func setRepeatMode(mode: RepeatMode) {
         engine.setRepeatMode(mode: mode)
         forceSynchronousStateUpdate()
     }
     
-    /// Explicitly jump to a specified structural chapter container
+    public var currentTimeMs: Int64 {
+        return internalPlaybackState?.currentTimeMs ?? 0
+    }
+    
+    public var currentRepeatMode: RepeatMode {
+        return internalPlaybackState?.repeatMode ?? .off
+    }
+    
     public func seekToChapter(id: String) {
         engine.seekToChapter(chapterId: id)
-        
-        // Fixed: Pulling exact position from engine state, routing safely via raw ms
         if let targetMs = engine.getPlaybackState()?.currentTimeMs {
             player?.seekTo(ms: targetMs)
         }
         forceSynchronousStateUpdate()
     }
     
-    // =========================================================================
-    // INTERNAL UTILITIES
-    // =========================================================================
+    public var activeText: String {
+        return internalPlaybackState?.activeText ?? ""
+    }
     
-    /// Replaces the missing refresh method: Queries Rust directly to enforce
-    /// immediate UI rendering without waiting for the next automated player clock poll.
+    // MARK: - Internal Helpers
     private func forceSynchronousStateUpdate() {
-        if let immediateState = engine.getPlaybackState() {
-            self.playbackState = immediateState
-            self.syncActiveChapter(at: immediateState.currentTimeMs)
-        }
+        guard let state = engine.getPlaybackState() else { return }
+        internalPlaybackState = state
+        applyStateToUI(state)
     }
     
     private func loadAndCacheNavigationTree() {
-        guard let liveTree = self.engine.getNavigationTree() else { return }
-        self.navigationTreeRoot = liveTree
+        guard let tree = engine.getNavigationTree() else { return }
+        flattenedChaptersCache = tree.children.flatMap { $0.children }
         
-        // Flatten nested layout tree tiers directly into a localized Swift heap cache
-        self.flattenedChaptersCache = liveTree.children.flatMap { $0.children }
-        
-        // Point track marker to the primary row item context if null
-        if self.selectedNodeId == nil {
-            self.selectedNodeId = self.flattenedChaptersCache.first?.id
-            self.selectedNodeTitle = self.flattenedChaptersCache.first?.title
+        if selectedNodeId == nil, let first = flattenedChaptersCache.first {
+            selectedNodeId = first.id
+            selectedNodeTitle = first.title
+            currentActiveTitle = first.title
         }
     }
     
     private func syncActiveChapter(at timeMs: Int64) {
-        // Run light matching logic on the Rust thread to extract the active leaf string ID
-        guard let activeLeafId = engine.findActiveNodeId(timeMs: timeMs) else { return }
+        guard let activeId = engine.findActiveNodeId(timeMs: timeMs),
+              let matching = flattenedChaptersCache.first(where: {
+                  $0.id == activeId || $0.children.contains(where: { $0.id == activeId })
+              }) else { return }
         
-        // Match the leaf string against our stable local Swift cache array
-        if let matchingChapter = flattenedChaptersCache.first(where: { chapter in
-            chapter.id == activeLeafId || chapter.children.contains(where: { $0.id == activeLeafId })
-        }) {
-            // ZERO-FLICKER RENDERING GUARD: Only publish change ticks if the ID values shift.
-            if self.selectedNodeId != matchingChapter.id {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    self.selectedNodeId = matchingChapter.id
-                }
+        if selectedNodeId != matching.id {
+            selectedNodeId = matching.id
+            selectedNodeTitle = matching.title
+        }
+        
+        if currentActiveTitle != matching.title {
+            withAnimation(.easeOut(duration: 0.18)) {
+                currentActiveTitle = matching.title
             }
         }
     }
     
-    // --- SAFE LOOKUP TOOLS EXPOSED TO THE VIEWS ---
     public var cachedChaptersList: [AudioNode] {
-        return flattenedChaptersCache
+        flattenedChaptersCache
+    }
+    
+    public var liveAudioVolume: CGFloat {
+        return player?.getLiveAudioLevel() ?? 0.1
     }
     
     public func getChapterIndex(for chapterId: String) -> Int {
@@ -233,7 +234,6 @@ public class AudioBibleViewModel: ObservableObject {
         return 1
     }
     
-    // ------ UTIL--------------
     public func formatTime(ms: Int64) -> String {
         let totalSeconds = max(0, ms / 1000)
         let minutes = totalSeconds / 60
@@ -241,18 +241,11 @@ public class AudioBibleViewModel: ObservableObject {
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
-
-// MARK: - SwiftUI Schema Compatibility Extensions
+// MARK: - Extensions
 extension AudioNode {
-    // Unique loop-free property mapping that isolates structural identifiers completely away from UniFFI
     public var stableId: String {
         let start = self.startMs ?? 0
         let end = self.endMs ?? 0
         return "\(self.title)-\(start)-\(end)"
-    }
-    
-    public var childrenNodes: [AudioNode]? {
-        guard !self.children.isEmpty else { return nil }
-        return self.children
     }
 }

@@ -1,8 +1,8 @@
 //
-//  ModuleRowView.swift
-//  X-Bible
+//   ModuleRowView.swift
+//   X-Bible
 //
-//  Created by Zoe Brooklyn on 6/10/26.
+//   Created by Zoe Brooklyn on 6/10/26.
 //
 
 import SwiftUI
@@ -20,15 +20,14 @@ struct RemoteAudioModuleView: View {
                     image.resizable()
                         .aspectRatio(contentMode: .fill)
                 } placeholder: {
-                    Color(.systemGroupedBackground)
-                        .overlay(Image(systemName: "music.note"))
+                    placeholderBackground
                 }
                 .frame(width: 150, height: 160)
                 .cornerRadius(8)
                 .clipped()
             } else {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.systemGroupedBackground))
+                    .fill(groupedBackgroundColor)
                     .frame(width: 150, height: 160)
                     .overlay(Image(systemName: "waveform").foregroundColor(.secondary))
             }
@@ -52,7 +51,7 @@ struct RemoteAudioModuleView: View {
                         .lineLimit(1)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(Color(.secondarySystemBackground)))
+                        .background(Capsule().fill(secondaryGroupedBackgroundColor))
                 }
                 
                 Spacer()
@@ -69,30 +68,26 @@ struct RemoteAudioModuleView: View {
                     }
                     .buttonStyle(.plain)
                     
-                    
                 case .downloading(let progress):
                     ZStack {
-                        // Background Track Ring
                         Circle()
                             .stroke(Color.secondary.opacity(0.2), lineWidth: 2)
                         
-                        // Active Progress Ring
                         Circle()
                             .trim(from: 0.0, to: CGFloat(progress))
                             .stroke(
                                 Color.accentColor,
                                 style: StrokeStyle(lineWidth: 2, lineCap: .round)
                             )
-                            .rotationEffect(.degrees(-90)) // Starts the path at 12 o'clock
-                            .animation(.linear(duration: 0.1), value: progress) // Smooths out the incremental jumps
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.1), value: progress)
                         
-                        // Centered Telemetry String
                         Text("\(Int(progress * 100))%")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(.accentColor)
                     }
-                    .frame(width: 28, height: 28) // Perfectly contained ring bounds
-                    .frame(width: 44, height: 44) // Outer interactive hitbox frame to match your other rows
+                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
                     
                 case .installed:
                     Image(systemName: "checkmark.circle.fill")
@@ -103,31 +98,77 @@ struct RemoteAudioModuleView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemBackground)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(surfaceBackgroundColor))
         .frame(width: 180)
-        // ─── NATIVE iOS DETAILED LONG-PRESS ACTION POPOVER ───
+        // ─── SAFE INTERACTION ACTION SHEET PLATFORM RESOLUTION ───
+        #if os(iOS)
         .contextMenu {
-            // Context Action Options
-            Button {
-                if case .idle = module.status { onDownloadTrigger() }
-            } label: {
-                Label(
-                    module.status == .installed ? "Downloaded Offline" : "Download Module",
-                    systemImage: module.status == .installed ? "checkmark.circle" : "arrow.down.circle"
-                )
-            }
-            
-            Button(action: {}) {
-                Label("Share Module Link", systemImage: "square.and.arrow.up")
-            }
+            contextMenuButtons
         } preview: {
-            // This closure creates the exact preview canvas sheet that slides out upon long pressing
             ModuleExpandedDetailPreview(module: module)
         }
+        #else
+        .contextMenu {
+            contextMenuButtons
+        }
+        #endif
+    }
+    
+    // --- COMPONENT SUB-VIEWS & DESIGN SYSTEM PROPERTIES ---
+    
+    @ViewBuilder
+    private var contextMenuButtons: some View {
+        Button {
+            if case .idle = module.status { onDownloadTrigger() }
+        } label: {
+            Label(
+                module.status == .installed ? "Downloaded Offline" : "Download Module",
+                systemImage: module.status == .installed ? "checkmark.circle" : "arrow.down.circle"
+            )
+        }
+        
+        Button(action: {}) {
+            Label("Share Module Link", systemImage: "square.and.arrow.up")
+        }
+    }
+    
+    @ViewBuilder
+    private var placeholderBackground: some View {
+        #if os(macOS)
+        Color(NSColor.windowBackgroundColor)
+            .overlay(Image(systemName: "music.note").foregroundColor(.secondary))
+        #else
+        Color.secondary
+            .overlay(Image(systemName: "music.note"))
+        #endif
+    }
+    
+    private var groupedBackgroundColor: Color {
+        #if os(macOS)
+        return Color(NSColor.windowBackgroundColor)
+        #else
+        return Color(.systemGroupedBackground)
+        #endif
+    }
+    
+    private var secondaryGroupedBackgroundColor: Color {
+        #if os(macOS)
+        return Color(NSColor.controlBackgroundColor)
+        #else
+        return Color(.secondarySystemBackground)
+        #endif
+    }
+    
+    private var surfaceBackgroundColor: Color {
+        #if os(macOS)
+        return Color(NSColor.controlBackgroundColor).opacity(0.5)
+        #else
+        return Color(.systemBackground)
+        #endif
     }
 }
 
-// ─── COMPONENT: EXPENDED PREVIEW LAYOUT ───
+// ─── COMPONENT: EXPANDED PREVIEW LAYOUT ───
 
 struct ModuleExpandedDetailPreview: View {
     let module: RemoteAudioModuleInfo
@@ -139,7 +180,11 @@ struct ModuleExpandedDetailPreview: View {
                     AsyncImage(url: url) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
+                        #if os(macOS)
+                        Color(NSColor.windowBackgroundColor)
+                        #else
                         Color(.systemGroupedBackground)
+                        #endif
                     }
                     .frame(width: 80, height: 80)
                     .cornerRadius(8)
@@ -180,7 +225,6 @@ struct ModuleExpandedDetailPreview: View {
             
             Divider()
             
-            // Rendering features list array context tokens
             VStack(alignment: .leading, spacing: 8) {
                 Text("Features")
                     .font(.caption)
@@ -194,7 +238,9 @@ struct ModuleExpandedDetailPreview: View {
                             .font(.system(size: 10, weight: .semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Capsule().fill(Color(.secondarySystemBackground)))
+                            .background(
+                                featureCapsuleBackground
+                            )
                     }
                 }
             }
@@ -202,6 +248,12 @@ struct ModuleExpandedDetailPreview: View {
         .padding()
         .frame(width: 280)
     }
+    
+    private var featureCapsuleBackground: some View {
+        #if os(macOS)
+        return Capsule().fill(Color(NSColor.controlBackgroundColor))
+        #else
+        return Capsule().fill(Color(.secondarySystemBackground))
+        #endif
+    }
 }
-
-

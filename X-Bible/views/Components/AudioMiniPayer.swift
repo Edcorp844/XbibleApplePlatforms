@@ -1,30 +1,29 @@
-//
-//  AudioMinipPayer.swift
-//  X-Bible
-//
-//  Created by Zoe Brooklyn on 6/12/26.
-//
+#if os(iOS)
 import SwiftUI
 import XbibleEngine
 
-struct AudioMinipPayer: View {
-    @ObservedObject var viewModel: AudioBibleViewModel
-    @State private var localScrubProgress: Double? = nil
+struct AudioMiniPayer: View {
+    // 1. Pass primitive properties directly instead of a state object wrapper
+    let displayTitle: String
+    let activeLyricTitle: String
+    let isPlaying: Bool
+    let hasSelectedModule: Bool
+    let artworkImage: UIImage?
     
-    init(viewModel: AudioBibleViewModel) {
-        self.viewModel = viewModel
-    }
+    // 2. Clear callback event closures to handle events without touch interference
+    var onTogglePlayback: () -> Void
+    var onSkipForward: () -> Void
+    
     var body: some View {
         HStack(spacing: 12) {
-            
-            HStack{
-                if let artwork = viewModel.decodedArtwork {
+            HStack {
+                // Artwork Layout
+                if let artwork = artworkImage {
                     Image(uiImage: artwork)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 30, height: 30)
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    
                 } else {
                     Image(systemName: "book.pages.fill")
                         .font(.system(size: 10))
@@ -34,40 +33,37 @@ struct AudioMinipPayer: View {
                         .cornerRadius(4)
                 }
                 
-                
+                // Text Description Layout (Strictly protecting text boundaries)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.selectedModule?.metadata?.displayTitle ?? "Audio Chapter").bold()
-                    Text(viewModel.currentActiveTitle)
+                    Text(displayTitle).bold()
+                    Text(activeLyricTitle)
                 }
                 .font(.footnote)
                 .lineLimit(1)
             }
             
-            
             Spacer(minLength: 0)
             
-            Group{
+            // Layout Controls Group retained exactly as intended
+            Group {
                 Button(action: {
-                    viewModel.togglePlayback()
+                    onTogglePlayback()
                 }) {
-                    Image(systemName: viewModel.playbackState?.isPlaying == true ? "pause.fill" : "play.fill")
-                    
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 }
                 
                 Button(action: {
-                    viewModel.skipForward()
+                    onSkipForward()
                 }) {
                     Image(systemName: "goforward.30")
                 }
             }
             .font(.title2)
-            .foregroundStyle(.primary, .primary)
+            .foregroundStyle(.primary)
             .buttonStyle(.plain)
-            .disabled(viewModel.selectedModule == nil)
+            .disabled(!hasSelectedModule)
         }
         .padding(.horizontal, 15)
     }
-    
 }
-    
-
+#endif

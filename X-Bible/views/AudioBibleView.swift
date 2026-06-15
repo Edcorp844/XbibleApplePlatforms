@@ -125,8 +125,8 @@ struct AudioBibleView: View {
                             // Scrubbing Timeline Slider Block
                             VStack(spacing: 6) {
                                 let duration = Double(viewModel.selectedModule?.metadata?.durationMs ?? 3600000)
-                                let current = Double(viewModel.playbackState?.currentTimeMs ?? 0)
-                                let isAudioPlaying = viewModel.playbackState?.isPlaying ?? false
+                                let current = Double(viewModel.currentTimeMs ?? 0)
+                                let isAudioPlaying = viewModel.isPlaying ?? false
                                 
                                 AnimatedCustomSlider(
                                     value: Binding<Double>(
@@ -222,7 +222,7 @@ struct AudioBibleView: View {
                                                             }
                                                         }
                                                     }
-                                                    .onChange(of: viewModel.playbackState?.activeText) { newValue in
+                                                    .onChange(of: viewModel.activeText) { newValue in
                                                         guard let incomingText = newValue else { return }
                                                         
                                                         // Scan the nested layout arrays to match the specific current sentence object

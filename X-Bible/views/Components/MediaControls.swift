@@ -8,58 +8,78 @@
 import SwiftUI
 import XbibleEngine
 
+@MainActor
 struct MediaControls: View {
     @ObservedObject var viewModel: AudioBibleViewModel
+    
     init(viewModel: AudioBibleViewModel) {
         self.viewModel = viewModel
     }
     
-    var body: some View{
+    var body: some View {
         HStack(spacing: 0) {
-            Button(action: {}) { Text("1 x").font(.footnote).bold() }.disabled(viewModel.selectedModule == nil)
-            
-            Spacer()
-            
-            //BACKWARD SKIP 15S: Redirected to viewModel wrapper pipeline directly
+            // 1. Playback Speed Button
             Button(action: {
-                viewModel.skipBackward()
+                // Future implementation
             }) {
-                Image(systemName: "gobackward.15").font(.title2).bold()
-            }.disabled(viewModel.selectedModule == nil)
+                Text("1 x")
+                    .font(.footnote)
+                    .bold()
+            }
+            .disabled(viewModel.selectedModule == nil)
             
             Spacer()
             
-            Button(action: {
-                viewModel.togglePlayback()
-            }) {
-                Image(systemName: (viewModel.playbackState?.isPlaying ?? false) ? "pause.fill" : "play.fill")
-                    .font(.title).bold()
-            }.disabled(viewModel.selectedModule == nil)
+            Group{
+                // 2. BACKWARD SKIP 15S
+                Button(action: {
+                    viewModel.skipBackward()
+                }) {
+                    Image(systemName: "gobackward.15")
+                }
+                .disabled(viewModel.selectedModule == nil)
+                
+                Spacer()
+                
+                // 3. PLAY / PAUSE TRANSPORT CONTROL
+                Button(action: {
+                    viewModel.togglePlayback()
+                }) {
+                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                }
+                .disabled(viewModel.selectedModule == nil)
+                
+                Spacer()
+                
+                // 4. FORWARD SKIP 30S
+                Button(action: {
+                    viewModel.skipForward()
+                }) {
+                    Image(systemName: "goforward.30")
+                }
+                .disabled(viewModel.selectedModule == nil)
+            }
+            .font(.largeTitle)
+            .bold()
             
             Spacer()
-            Button(action: {
-                viewModel.skipForward()
-            }) {
-                Image(systemName: "goforward.30").font(.title2).bold()
-            }.disabled(viewModel.selectedModule == nil)
             
-            Spacer()
-            
-            // DYNAMIC REPEAT MODE CYCLE CONTROL: Updated properties syntax to match safe internal mappings
-            let currentRepeat = viewModel.playbackState?.repeatMode ?? .off
+            // 5. DYNAMIC REPEAT MODE CYCLE CONTROL
             Button(action: {
                 let nextMode: RepeatMode
-                switch currentRepeat {
+                // 🚀 Reads directly from the safe exposed view model property
+                switch viewModel.currentRepeatMode {
                 case .off: nextMode = .one
                 case .one: nextMode = .all
                 case .all: nextMode = .off
                 }
                 viewModel.setRepeatMode(mode: nextMode)
             }) {
-                Image(systemName: currentRepeat == .one ? "repeat.1" : "repeat")
+                Image(systemName: viewModel.currentRepeatMode == .one ? "repeat.1" : "repeat")
                     .font(.title3)
-                    .foregroundStyle(currentRepeat == .off ? .white.opacity(0.4) : .cyan)
-            }.disabled(viewModel.selectedModule == nil)
+                    .foregroundStyle(viewModel.currentRepeatMode == .off ? .white.opacity(0.4) : .cyan)
+            }
+            .disabled(viewModel.selectedModule == nil)
         }
         .foregroundStyle(.white.opacity(0.8))
         .buttonStyle(.plain)

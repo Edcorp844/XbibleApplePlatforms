@@ -67,8 +67,8 @@ struct PersistentAudioPlayerBar: View {
                                 .lineLimit(1)
                             
                             let duration = Double(viewModel.selectedModule?.metadata?.durationMs ?? 3600000)
-                            let current = Double(viewModel.playbackState?.currentTimeMs ?? 0)
-                            let isAudioPlaying = viewModel.playbackState?.isPlaying ?? false
+                            let current = Double(viewModel.currentTimeMs)
+                            let isAudioPlaying = viewModel.isPlaying
                             
 //                            HStack {
 //                                Text(viewModel.formatTime(ms: Int64(current))).font(.system(size: 8))
