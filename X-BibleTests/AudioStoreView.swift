@@ -40,13 +40,11 @@ struct AudioStoreView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
                 }
-                .background(storeBackgroundColor.edgesIgnoringSafeArea(.bottom))
             }
         }
         .navigationTitle("Audio Store")
+        .padding()
         // 🚀 OPTIMIZATION: Conditional platform evaluation wrapper safely guarding iOS styling properties
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

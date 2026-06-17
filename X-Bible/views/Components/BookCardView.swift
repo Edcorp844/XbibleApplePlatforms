@@ -86,6 +86,7 @@ struct BookCardView: View {
                     .font(.system(size: 12, weight: .bold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
+                    .foregroundColor(.accentColor)
             }
             .buttonStyle(.plain)
             .overlay(Capsule().stroke(Color.accentColor, lineWidth: 1.2))

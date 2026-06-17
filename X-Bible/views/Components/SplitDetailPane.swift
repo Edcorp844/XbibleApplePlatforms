@@ -1,4 +1,3 @@
-//
 //  SplitDetailPane.swift
 //  XBible
 //
@@ -12,21 +11,21 @@ struct SplitDetailPane: View {
     @Binding var isPresented: Bool
     @Binding var selectedTab: StudyTab
     let width: CGFloat
-    
+
     // Dictionary State
     @Binding var selectedWordForLookup: String
     @Binding var dictionaryResults: [XbibleEngine.DictionaryResult]
     let isDictionaryLoading: Bool
     let onWordClick: (XbibleEngine.Word) -> Void
-    
+
     // Lexicon State
     @Binding var selectedStrongsForLookup: String
     @Binding var selectedLexiconModule: String
     let availableLexicons: [XbibleEngine.SwordModule]
-    let lexiconResults: [LexiconResult] // Your flat lookup structure
+    let lexiconResults: [LexiconResult]
     let isLexiconLoading: Bool
     let onLexiconModuleChanged: () -> Void
-    
+
     // Commentary State
     @Binding var selectedCommentaryModule: String
     let availableCommentaries: [XbibleEngine.SwordModule]
@@ -34,38 +33,28 @@ struct SplitDetailPane: View {
     let isCommentaryLoading: Bool
     let onCommentaryModuleChanged: () -> Void
     let currentCommentaryReference: String
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header: Segmented Control & Dismiss Button
-            HStack(spacing: 12) {
-                StudyToolsControl(
-                    selection: $selectedTab,
-                    items: StudyTab.allCases,
-                    title: { $0.rawValue }
-                )
-                
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        isPresented = false
+            // Segmented Picker Header
+            VStack(spacing: 0) {
+                Picker("", selection: $selectedTab) {
+                    ForEach(StudyTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
+                            .cornerRadius(20)
                     }
-                }) {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .padding(6)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
                 }
-                .buttonStyle(.plain)
-                .help("Hide Split View")
+                .cornerRadius(20)
+                .glassEffect()
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                
+                Divider()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            
-            Divider()
-            
-            // Tab Contents
-            ZStack {
+            // Dynamic Content Pane driven by the segment state
+            Group {
                 switch selectedTab {
                 case .dictionary:
                     dictionaryTabContent
@@ -78,16 +67,10 @@ struct SplitDetailPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: width)
-        .overlay(
-            HStack {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.1))
-                    .frame(width: 1)
-                Spacer()
-            }
-        )
     }
-    
+
+    // MARK: - Helpers
+
     private func copyableText(for sections: [XbibleEngine.Section]) -> String {
         sections.map { section in
             let titleText = section.title.map { $0.text }.joined(separator: " ")
@@ -99,9 +82,9 @@ struct SplitDetailPane: View {
             return [titleText, versesText].filter { !$0.isEmpty }.joined(separator: "\n")
         }.joined(separator: "\n\n")
     }
-    
-    // MARK: - Tab Content Views
-    
+
+    // MARK: - Dictionary Tab
+
     private var dictionaryTabContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -110,7 +93,7 @@ struct SplitDetailPane: View {
                         Text(selectedWordForLookup)
                             .font(.headline)
                             .foregroundColor(.primary)
-                        
+
                         Capsule()
                             .fill(Color.accentColor)
                             .frame(width: 24, height: 3)
@@ -124,7 +107,7 @@ struct SplitDetailPane: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            
+
             if isDictionaryLoading {
                 Spacer()
                 HStack {
@@ -151,7 +134,6 @@ struct SplitDetailPane: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        // Safe enumeration pattern avoids out-of-bounds index race conditions
                         ForEach(Array(dictionaryResults.enumerated()), id: \.offset) { _, result in
                             DictionaryResultRowView(result: result)
                         }
@@ -161,7 +143,7 @@ struct SplitDetailPane: View {
             }
         }
     }
-    
+
     private var dictionaryEmptyState: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -181,7 +163,9 @@ struct SplitDetailPane: View {
         }
         .padding(32)
     }
-    
+
+    // MARK: - Lexicon Tab
+
     private var lexiconTabContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 8) {
@@ -222,7 +206,7 @@ struct SplitDetailPane: View {
                         .buttonStyle(.plain)
                     }
                 }
-                
+
                 if !selectedStrongsForLookup.isEmpty {
                     HStack {
                         Text("Strong's Code:")
@@ -242,9 +226,9 @@ struct SplitDetailPane: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(Color.primary.opacity(0.02))
-            
+
             Divider()
-            
+
             if isLexiconLoading {
                 Spacer()
                 HStack {
@@ -271,23 +255,19 @@ struct SplitDetailPane: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        // 1. Added missing closing parenthesis after id: \.module_name
-                        // 2. Switched id to module_name since 'key' is identical across all results
                         ForEach(lexiconResults, id: \.moduleName) { result in
                             let formatted = parseHTML(result.definition, for: result.key)
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    // 3. Changed resolvedKey to module_name to display the dictionary source
                                     Text(result.moduleName)
                                         .font(.headline)
                                         .foregroundColor(.accentColor)
-                                    
-                                    // 4. Changed key display to show the searched identifier
+
                                     Text("(\(result.key))")
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                 }
-                                
+
                                 Text(formatted.attributedString)
                                     .font(.body)
                                     .foregroundColor(.primary)
@@ -299,11 +279,10 @@ struct SplitDetailPane: View {
                     }
                     .padding(16)
                 }
-
             }
         }
     }
-    
+
     private var lexiconEmptyState: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -323,7 +302,9 @@ struct SplitDetailPane: View {
         }
         .padding(32)
     }
-    
+
+    // MARK: - Commentary Tab
+
     private var commentaryTabContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 8) {
@@ -364,7 +345,7 @@ struct SplitDetailPane: View {
                         .buttonStyle(.plain)
                     }
                 }
-                
+
                 HStack {
                     Text("Reference:")
                         .font(.caption)
@@ -381,16 +362,16 @@ struct SplitDetailPane: View {
                             Label("Copy", systemImage: "doc.on.doc")
                                 .font(.caption)
                         }
-                        .buttonStyle(.borderless) // Bonus: .borderless is safe on both macOS and iOS!
+                        .buttonStyle(.borderless)
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(Color.primary.opacity(0.02))
-            
+
             Divider()
-            
+
             if isCommentaryLoading {
                 Spacer()
                 HStack {
@@ -422,7 +403,7 @@ struct SplitDetailPane: View {
             }
         }
     }
-    
+
     private var commentaryEmptyState: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -443,4 +424,3 @@ struct SplitDetailPane: View {
         .padding(32)
     }
 }
-

@@ -36,7 +36,6 @@ struct AudioBibleArtWorkView: View {
                 
                 // ================= LEFT SIDE PANEL: PLAYER CORE =================
                 VStack(alignment: .leading, spacing: 0) {
-                    Spacer()
                     if showScriptures {
                         // High-fidelity Album Art Canvas
                         artworkView
@@ -112,11 +111,11 @@ struct AudioBibleArtWorkView: View {
                         MediaControls(viewModel: viewModel)
                         Spacer()
                     } else {
-                        ZStack(alignment: .topLeading) {
+                        ZStack(alignment: .topLeading, ) {
                             // 1. UNDERLAY LAYER: Scrollable Content & Pagination Indicators
-                            
+                            Spacer(minLength: 50)
                             VStack(alignment: .leading, spacing: 20) {
-                                
+                                Spacer(minLength: 50)
                                 // Layout Carousel Pagination Indicator Dots
                                 HStack(spacing: 8) {
                                     Circle().fill(.white).frame(width: 7, height: 7)
@@ -140,20 +139,22 @@ struct AudioBibleArtWorkView: View {
                                         .shadow(color: .black.opacity(0.3), radius: 15, x: 0, y: 8)
                                 )
                                 .zIndex(1)
-                        }
+                        }.padding(.top, 24)
                     }
+                        
                     HStack {
                         Button(action: {
                             showScriptures.toggle()
                         }){
-                            Image(systemName: "ellipses")
+                            Image(systemName: "ellipsis")
                         }
                     }
+                    .padding()
                     Spacer()
                 }
             }.padding(.horizontal, 24)
         }
-        .frame(maxHeight: .infinity)
+        //.frame(maxHeight: .infinity)
     }
     
     // --- EXTRACTED CONTAINER TO DECREASE DECLARATIVE NESTING DEPTH ---

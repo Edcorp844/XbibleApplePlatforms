@@ -19,6 +19,11 @@ struct InstallTracker: Identifiable {
     var status: String
 }
 
+import Foundation
+import XbibleEngine
+import Combine
+import SwiftData
+
 class StoreTaskManager: ObservableObject {
     @Published var currentStep: EngineStep = .initializing
     @Published var installers: [InstallTracker] = []
@@ -26,158 +31,86 @@ class StoreTaskManager: ObservableObject {
     
     let messages = PassthroughSubject<TaskMessage, Never>()
     
-    private var queue = DispatchQueue(label: "com.xbible.store-task-manager", qos: .userInitiated)
+    // 📂 CHANNEL 1: Low-priority background sync lane (Prevents thread stalling)
+    private var catalogSyncQueue = DispatchQueue(label: "com.xbible.catalog-sync-queue", qos: .background)
+    
+    // ⚡️ CHANNEL 2: Ultra-high-priority execution lane for instant user feedback
+    private var userInteractionQueue = DispatchQueue(label: "com.xbible.user-interaction-queue", qos: .userInteractive)
     
     private var modelContext: ModelContext?
     private var engine: XBibleEngine?
     
-    private var fetchingSources = Set<String>()
-    private var cachedModules: [String: [XbibleEngine.SwordModule]] = [:]
-    private var cachedSources: [XbibleEngine.ModuleSource]?
-    
-    /// Thread-safe localized tracking registry mapping active module components to underlying engine tokens
     private var activeInstallTasks: [String: String] = [:] // [ModuleName: TaskId]
+    private let activeTasksLock = NSRecursiveLock()
     
     func setup(modelContext: ModelContext, engine: XBibleEngine, queue: DispatchQueue? = nil) {
-        if let sharedQueue = queue {
-            self.queue = sharedQueue
-        }
         self.modelContext = modelContext
         self.engine = engine
         
-        // Kick off the unified parallel loading pipeline
         startSynchronizationPipeline()
     }
     
     // ─────────────────────────────────────────────────────────────────────────
-    //  UNIFIED CONCURRENT SYNCHRONIZATION WORKFLOW (Direct Rust Architecture)
+    //  CHANNEL 1: CATALOG SYNCHRONIZATION (Low Priority Background Execution)
     // ─────────────────────────────────────────────────────────────────────────
     
-        func startSynchronizationPipeline() {
-            guard let engine = self.engine else { return }
+    func startSynchronizationPipeline() {
+        guard let engine = self.engine else { return }
+        
+        catalogSyncQueue.async { [weak self] in
+            guard let self = self else { return }
             
-            queue.async { [weak self] in
-                guard let self = self else { return }
+            let sources = engine.getRemoteSources()
+            if sources.isEmpty {
+                self.updateStep(.failed("No remote sources configured."))
+                return
+            }
+            
+            let sourceStrings = sources.map { "\($0)" }
+            self.fetchSourcesIncrementally(sources: sourceStrings, index: 0, total: sources.count)
+        }
+    }
+    
+    private func fetchSourcesIncrementally(sources: [String], index: Int, total: Int) {
+        guard index < sources.count else {
+            self.updateStep(.finished)
+            return
+        }
+        
+        catalogSyncQueue.async { [weak self] in
+            guard let self = self, let engine = self.engine else { return }
+            let sourceIdentifier = sources[index]
+            
+            print("📡 Syncing repository sequentially: \(sourceIdentifier)...")
+            
+            // Runs on the separate low priority catalog queue
+            let modules = engine.fetchRemoteModules(sourceName: sourceIdentifier)
+            
+            DispatchQueue.main.async {
+                let nextIndex = index + 1
+                self.currentStep = .fetchingSources(current: nextIndex, total: total, activeSource: sourceIdentifier)
+                self.globalProgress = Float(nextIndex) / Float(total)
                 
-                // 1. Structural Read of Remote Repositories
-                let sources = engine.getRemoteSources()
-                let totalSources = sources.count
-                
-                if sources.isEmpty {
-                    self.updateStep(.failed("No remote sources are configured in the engine context."))
-                    return
+                if !modules.isEmpty {
+                    self.messages.send(.fetchCompleted(source: sourceIdentifier, modules: modules))
+                } else {
+                    self.messages.send(.fetchFailed(source: sourceIdentifier))
                 }
                 
-                let modulesLock = NSLock()
-                let counterLock = NSLock()
-                var aggregatedModules: [XbibleEngine.SwordModule] = []
-                var finishedCount = 0
-                
-                let fetchGroup = DispatchGroup()
-                
-                // 2. Spawn Workers to Pull Remote Catalogs Concurrently
-                // 2. Pull Remote Catalogs Sequentially for Maximum FFI Stability
-                            for source in sources {
-                                let sourceIdentifier = "\(source)"
-                                
-                                // Keep execution context entirely on our isolated background queue
-                                // This prevents slamming the Rust UniFFI layer simultaneously across threads
-                                autoreleasepool {
-                                    print("📡 Syncing repository: \(sourceIdentifier)...")
-                                    
-                                    // Call the engine method safely within our controlled sequential flow
-                                    let modules = engine.fetchRemoteModules(sourceName: source)
-                                    
-                                    if !modules.isEmpty {
-                                        modulesLock.lock()
-                                        aggregatedModules.append(contentsOf: modules)
-                                        modulesLock.unlock()
-                                        
-                                        // Push intermediate results live to the UI immediately upon success!
-                                        DispatchQueue.main.async {
-                                            self.messages.send(.fetchCompleted(source: sourceIdentifier, modules: modules))
-                                        }
-                                    } else {
-                                        print("⚠️ Source returned zero modules or skipped: \(sourceIdentifier)")
-                                        DispatchQueue.main.async {
-                                            self.messages.send(.fetchFailed(source: sourceIdentifier))
-                                        }
-                                    }
-                                    
-                                    counterLock.lock()
-                                    finishedCount += 1
-                                    let currentFinished = finishedCount
-                                    counterLock.unlock()
-                                    
-                                    // Dispatch state parameters directly up to Main Actor UI observers
-                                    DispatchQueue.main.async {
-                                        self.currentStep = .fetchingSources(current: currentFinished, total: totalSources, activeSource: sourceIdentifier)
-                                        self.globalProgress = Float(currentFinished) / Float(totalSources)
-                                    }
-                                }
-                            }
-                
-                // Wait for all concurrent threads to resolve completely
-                fetchGroup.wait()
-                
-                // Check if we captured anything at all, ignoring the timed out sources
-                if aggregatedModules.isEmpty {
-                    self.updateStep(.failed("Network aggregation returned zero remote modules across all sources due to timeouts."))
-                    return
+                // Let the thread breathe so the high-priority queue can inject commands seamlessly
+                DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 0.1) {
+                    self.fetchSourcesIncrementally(sources: sources, index: nextIndex, total: total)
                 }
-                
-                // 3. Payload Selection Processing Stage
-                self.updateStep(.processingSelection)
-                Thread.sleep(forTimeInterval: 0.6)
-                
-                let targetCount = min(3, aggregatedModules.count)
-                let selectedModules: [String] = aggregatedModules.prefix(targetCount).map { $0.name }
-                
-                DispatchQueue.main.sync {
-                    self.installers = selectedModules.map { name in
-                        InstallTracker(moduleName: name, progress: 0.0, status: "Queued")
-                    }
-                    self.currentStep = .installingModules
-                }
-                
-                // 4. Sequential Module Installation Pipeline (Simulated Driver Loop)
-                for i in 0..<targetCount {
-                    let moduleName = selectedModules[i]
-                    
-                    DispatchQueue.main.async {
-                        if self.installers.indices.contains(i) {
-                            self.installers[i].status = "Installing"
-                        }
-                    }
-                    
-                    for progressTick in 1...100 {
-                        Thread.sleep(forTimeInterval: 0.025)
-                        
-                        DispatchQueue.main.async {
-                            if self.installers.indices.contains(i) {
-                                self.installers[i].progress = Float(progressTick) / 100.0
-                            }
-                        }
-                    }
-                    
-                    DispatchQueue.main.async {
-                        if self.installers.indices.contains(i) {
-                            self.installers[i].status = "Completed"
-                            self.installers[i].progress = 1.0
-                        }
-                    }
-                }
-                
-                // 5. Run Execution Finalization Pipeline
-                self.updateStep(.finished)
             }
         }
+    }
     
     // ─────────────────────────────────────────────────────────────────────────
-    //  EXPLICIT MODULE ACTIONS (UI Event Hooks Utilizing Target Engine Tasks)
+    //  CHANNEL 2: TARGET ACTIONS (High Priority Interaction Lane)
     // ─────────────────────────────────────────────────────────────────────────
+    
     func installModule(engine: XBibleEngine, source: String, moduleName: String, skipDatabase: Bool = false) {
-        queue.async { [weak self] in
+        userInteractionQueue.async { [weak self] in
             guard let self = self else { return }
             
             if engine.isModuleInstalled(moduleName: moduleName) {
@@ -196,19 +129,33 @@ class StoreTaskManager: ObservableObject {
                 self.messages.send(.installStarted(moduleName: moduleName))
             }
             
-            // Trigger asynchronous layout processing and securely capture the identifier token
-            let taskId = engine.installModuleAsync(source: source, moduleName: moduleName)
-            self.activeInstallTasks[moduleName] = taskId
+            // ⏳ Keep our safety wait gate to ensure the background sync stream doesn't clash
+            if case .fetchingSources(_, _, let activeSource) = self.currentStep, activeSource == source {
+                print("⏳ Source \(source) is currently busy syncing catalogues. Postponing installation start...")
+                var retryCount = 0
+                while case .fetchingSources(_, _, let activeSource) = self.currentStep, activeSource == source, retryCount < 20 {
+                    Thread.sleep(forTimeInterval: 0.2)
+                    retryCount += 1
+                }
+            }
             
-            // Keep background worker context sequentially contained without spinning a dynamic timer loop
-            // Keep background worker context sequentially contained without spinning a dynamic timer loop
+            // 🛠️ CRITICAL FIX FOR -9 WRITE FAILURE:
+            // Before calling install, we must force the C++ layer to refresh its internal
+            // target installation pointer directory. This explicitly binds a writable path context.
+            print("🔧 Initializing target directory permissions for \(moduleName)...")
+            _ = engine.refreshInstalledModules()
+            
+            // Now fire the extraction task safely
+            let taskId = engine.installModuleAsync(source: source, moduleName: moduleName)
+            
+            self.activeTasksLock.lock()
+            self.activeInstallTasks[moduleName] = taskId
+            self.activeTasksLock.unlock()
+            
             while let status = engine.getTaskStatus(taskId: taskId), status.state == .running {
-                // Safely update specific intermediate stream metrics
                 let progressValue = status.progress
                 
                 DispatchQueue.main.async {
-                    // Passing 0 for bytes if your TaskStatus doesn't expose them directly,
-                    // or swap them with your exact property names.
                     self.messages.send(.installProgress(
                         moduleName: moduleName,
                         progress: progressValue,
@@ -217,18 +164,22 @@ class StoreTaskManager: ObservableObject {
                         totalBytes: 0
                     ))
                 }
-                Thread.sleep(forTimeInterval: 0.1)
+                Thread.sleep(forTimeInterval: 0.05)
             }
             
-            // Pop item context from tracking dictionary once transaction lifecycle finishes running
+            self.activeTasksLock.lock()
             self.activeInstallTasks.removeValue(forKey: moduleName)
+            self.activeTasksLock.unlock()
+            
             let isSuccess = engine.isModuleInstalled(moduleName: moduleName)
             
             DispatchQueue.main.async {
                 if isSuccess {
                     if !skipDatabase { self.removePendingInstallation(moduleName: moduleName) }
                     self.messages.send(.installCompleted(moduleName: moduleName))
+                    print("✅ Module '\(moduleName)' successfully installed and registered!")
                 } else {
+                    print("🚨 Extraction pipeline failed with error code -9. Check file path system sandbox limits.")
                     self.messages.send(.installFailed(moduleName: moduleName))
                 }
             }
@@ -236,7 +187,7 @@ class StoreTaskManager: ObservableObject {
     }
     
     func refreshInstalledModules(completion: @escaping ([XbibleEngine.SwordModule]) -> Void) {
-        queue.async { [weak self] in
+        userInteractionQueue.async { [weak self] in
             guard let self = self, let engine = self.engine else { return }
             let modules = engine.refreshInstalledModules()
             DispatchQueue.main.async {
@@ -247,12 +198,14 @@ class StoreTaskManager: ObservableObject {
     
     func cancelInstallation(moduleName: String) {
         guard let engine = self.engine else { return }
-        queue.async {
-            // Locate precise token identifier from dictionary stack frame context
-            if let taskId = self.activeInstallTasks[moduleName] {
+        userInteractionQueue.async {
+            self.activeTasksLock.lock()
+            let targetTaskId = self.activeInstallTasks[moduleName]
+            if let taskId = targetTaskId {
                 engine.cancelTask(taskId: taskId)
                 self.activeInstallTasks.removeValue(forKey: moduleName)
             }
+            self.activeTasksLock.unlock()
             
             DispatchQueue.main.async {
                 self.removePendingInstallation(moduleName: moduleName)
@@ -261,9 +214,6 @@ class StoreTaskManager: ObservableObject {
         }
     }
     
-    // ─────────────────────────────────────────────────────────────────────────
-    //  STATE UPDATE HELPERS
-    // ─────────────────────────────────────────────────────────────────────────
     private func updateStep(_ step: EngineStep) {
         DispatchQueue.main.async {
             self.currentStep = step

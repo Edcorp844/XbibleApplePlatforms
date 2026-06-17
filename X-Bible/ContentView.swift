@@ -11,6 +11,7 @@ import XbibleEngine
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject var wrapper: SwordEngineWrapper
     
     private let coreAudioEngine: AudioEngine
@@ -45,102 +46,108 @@ struct ContentView: View {
         
 #else
         // ─────────────────────────────────────────────────────────────────
-        //  iOS MOBILE ARCHITECTURE (Direct TabView Hierarchy Root Layout)
+        //  iOS MOBILE ARCHITECTURE (ZStack Content Isolation)
         // ─────────────────────────────────────────────────────────────────
-        TabView(selection: $wrapper.selectedSidebarItem) {
-            Tab(value: SidebarItem.study) {
-                NavigationSplitView {
+        ZStack(alignment: .bottom) {
+            TabView(selection: $wrapper.selectedSidebarItem) {
+                Tab(value: SidebarItem.all, role: .search) {
+                    DetailView(selection: .all, viewModel: audioViewModel)
+                } label: {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+                
+                Tab(value: SidebarItem.study) {
                     DetailView(selection: .study, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Scripture Section")
+                } label: {
+                    Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
                 }
-                .navigationSplitViewStyle(.automatic)
-            } label: {
-                Label("Study", systemImage: "book")
-            }
-            
-            Tab(value: SidebarItem.store) {
-                NavigationSplitView {
+                
+                Tab(value: SidebarItem.store) {
                     DetailView(selection: .store, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Module to Download")
+                } label: {
+                    Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
                 }
-                .navigationSplitViewStyle(.automatic)
-            } label: {
-                Label("Store", systemImage: "cart")
+                
+                if sizeClass == .regular {
+                    TabSection("Tools") {
+                        Tab(value: SidebarItem.audioBible) {
+                            AudioBibleView(viewModel: audioViewModel)
+                        } label: {
+                            Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
+                        }
+                        Tab(value: SidebarItem.bibleTimeline) {
+                            DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
+                        } label: {
+                            Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
+                        }
+                    }
+                } else {
+                    Tab(value: SidebarItem.tools) {
+                        DetailView(selection: .tools, viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.tools.title, systemImage: SidebarItem.tools.icon)
+                    }
+                }
+                
+                if sizeClass == .regular {
+                    TabSection("Library") {
+                        ForEach(getAvailableCategories(), id: \.self) { item in
+                            Tab(item.title, systemImage: item.icon, value: item) {
+                                DetailView(selection: item, viewModel: audioViewModel)
+                            }
+                        }
+                    }
+                } else {
+                    Tab(value: SidebarItem.all) {
+                        DetailView(selection: .all, viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.all.title, systemImage: SidebarItem.all.icon)
+                    }
+                }
             }
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewStyle(.sidebarAdaptable)
+            .defaultAdaptableTabBarPlacement(.sidebar)
             
-            Tab(value: SidebarItem.audioBible) {
-                NavigationSplitView {
-                    ToolsView(audioViewModel: audioViewModel)
-                } detail: {
-                    Text("Select Tool Matrix")
-                }
-                .navigationSplitViewStyle(.automatic)
-            } label: {
-                Label("Tools", systemImage: "ellipsis.rectangle")
-            }
-            
-            Tab(value: SidebarItem.all) {
-                NavigationSplitView {
-                    DetailView(selection: .all, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Library Book")
-                }
-                .navigationSplitViewStyle(.automatic)
-            } label: {
-                Label("Library", systemImage: "books.vertical")
-            }
-            
-            Tab(value: SidebarItem.all, role: .search) {
-                NavigationSplitView {
-                    DetailView(selection: .all, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Library Book")
-                }
-                .navigationSplitViewStyle(.automatic)
-            } label: {
-                Label("Search", systemImage: "magnifyingglass")
-            }
-        }
-        // FIXED: Route via an explicit accessory structural bridge view
-        // to isolate layout graph modifications away from ContentView root body
-        .if(audioViewModel.selectedModule != nil) { view in
-            view.tabViewBottomAccessory {
+            // Floating Overlay Mini-Player for Compact iPhones (Prevents TabView constraints crushing internal Toolbars)
+            if audioViewModel.selectedModule != nil && sizeClass == .compact {
                 AudioMiniPayer(
                     displayTitle: audioViewModel.selectedModule?.metadata?.displayTitle ?? "Audio Chapter",
-                    activeLyricTitle:audioViewModel.currentActiveTitle,
-                    isPlaying:audioViewModel.isPlaying, // Maps safely to our stable primitive boolean
-                    hasSelectedModule: audioViewModel.selectedModule != nil,
+                    activeLyricTitle: audioViewModel.currentActiveTitle,
+                    isPlaying: audioViewModel.isPlaying,
+                    hasSelectedModule: true,
                     artworkImage: audioViewModel.decodedArtwork
                 ) {
                     audioViewModel.togglePlayback()
                 } onSkipForward: {
                     audioViewModel.skipForward()
-                }.onTapGesture {
+                }
+                .onTapGesture {
                     expandMiniPlayer.toggle()
                 }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.horizontal, 8)
+                // Positioned neatly directly over the native system bottom tab bar line
+                .padding(.bottom, 54)
+                .zIndex(10)
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewStyle(.sidebarAdaptable)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: audioViewModel.selectedModule != nil)
         .onAppear { refreshEngineIfNeeded() }
         .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
         .fullScreenCover(isPresented: $expandMiniPlayer) {
             ZStack(alignment: .top) {
-                // Core View Layer
                 AudioBibleArtWorkView(viewModel: audioViewModel)
                 
-                // Drag Indicator Capsule with an implicit drag gesture
                 Capsule()
                     .fill(.primary.secondary)
                     .frame(width: 50, height: 5)
                     .padding(.top, 12)
-                    .contentShape(Rectangle()) // Makes the entire top area grabbable
+                    .contentShape(Rectangle())
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                if value.translation.height > 60 { // Detect pulling down
+                                if value.translation.height > 60 {
                                     expandMiniPlayer = false
                                 }
                             }
@@ -156,43 +163,52 @@ struct ContentView: View {
     #if os(macOS)
     private var macOSTabView: some View {
         TabView(selection: $wrapper.selectedSidebarItem) {
-            Tab("Study", systemImage: "book", value: SidebarItem.study) {
-                NavigationSplitView {
-                    DetailView(selection: .study, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Scripture Section")
+            Tab(value: SidebarItem.all, role: .search) {
+                DetailView(selection: .all, viewModel: audioViewModel)
+            } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+            
+            Tab(value: SidebarItem.study) {
+                DetailView(selection: .study, viewModel: audioViewModel)
+            } label: {
+                Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
+            }
+            
+            Tab(value: SidebarItem.store) {
+                DetailView(selection: .store, viewModel: audioViewModel)
+            } label: {
+                Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
+            }
+            
+            if sizeClass == .regular {
+                TabSection("Tools") {
+                    Tab(value: SidebarItem.audioBible) {
+                        AudioBibleView(viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
+                    }
+                    Tab(value: SidebarItem.bibleTimeline) {
+                        DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
+                    }
                 }
             }
             
-            Tab("Store", systemImage: "cart", value: SidebarItem.store) {
-                NavigationSplitView {
-                    DetailView(selection: .store, viewModel: audioViewModel)
-                } detail: {
-                    Text("Select Module to Download")
-                }
-            }
-            
-            TabSection("Tools") {
-                Tab("Timeline", systemImage: "calendar.day.timeline.left", value: SidebarItem.bibleTimeline) {
-                    DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
-                }
-                Tab("Audio Bible", systemImage: "speaker.wave.2", value: SidebarItem.audioBible) {
-                    DetailView(selection: .audioBible, viewModel: audioViewModel)
-                }
-                Tab("Biblical Maps", systemImage: "map", value: SidebarItem.maps) {
-                    DetailView(selection: .maps, viewModel: audioViewModel)
-                }
-            }
-            
-            TabSection("Library") {
-                ForEach(getAvailableCategories(), id: \.self) { item in
-                    Tab(item.title, systemImage: item.icon, value: item) {
-                        DetailView(selection: item, viewModel: audioViewModel)
+            if sizeClass == .regular {
+                TabSection("Library") {
+                    ForEach(getAvailableCategories(), id: \.self) { item in
+                        Tab(item.title, systemImage: item.icon, value: item) {
+                            DetailView(selection: item, viewModel: audioViewModel)
+                        }
                     }
                 }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .onAppear { refreshEngineIfNeeded() }
+        .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
     }
     #endif
     
@@ -211,7 +227,6 @@ struct ContentView: View {
         }
     }
 }
-
 
 extension View {
     @ViewBuilder

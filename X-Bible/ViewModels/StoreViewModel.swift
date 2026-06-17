@@ -32,8 +32,9 @@ class StoreViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
-    /// Groups all modules across all sources into [Category: [Language: [Modules]]] for the UI
+    /// Groups all modules across all sources into [Category: [Language: [Modules]]] safely
     var organizedModules: [String: [String: [XbibleEngine.SwordModule]]] {
+        // Collect modules using stable array references to prevent intermediate state flickers
         let allModules = allRemoteModules.values.flatMap { $0 }
 
         if allModules.isEmpty { return [:] }
@@ -52,7 +53,6 @@ class StoreViewModel: ObservableObject {
     // MARK: - Setup
 
     func setup(modelContext: SwiftData.ModelContext, wrapper: SwordEngineWrapper) {
-        // Prevent double setup if navigating back and forth
         guard self.engine == nil else {
             syncAllInstallationStatuses()
             return
@@ -65,7 +65,6 @@ class StoreViewModel: ObservableObject {
         setupMessageListeners()
         setupPipelineBindings()
         
-        // Ensure the task manager is initialized with the engine and context
         if let engine = self.engine {
             taskManager?.setup(modelContext: modelContext, engine: engine, queue: wrapper.engineQueue)
         }
@@ -80,7 +79,6 @@ class StoreViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    /// Establishes clear pipeline synchronization hooks with the background data thread
     private func setupPipelineBindings() {
         guard let manager = taskManager else { return }
         
@@ -91,9 +89,10 @@ class StoreViewModel: ObservableObject {
                 self.currentPipelineStep = step
                 
                 switch step {
-                case .initializing, .fetchingSources, .processingSelection:
-                    self.isLoading = true
-                case .installingModules, .failed, .finished:
+                case .initializing, .fetchingSources:
+                    // Keep view operational rather than blocking view state actions entirely
+                    self.isLoading = self.allRemoteModules.isEmpty
+                case .processingSelection, .installingModules, .failed, .finished:
                     self.isLoading = false
                 }
             }
@@ -115,6 +114,7 @@ class StoreViewModel: ObservableObject {
             self.availableSources = sources
 
         case .fetchCompleted(let source, let modules):
+            // Injecting modules dynamically updates the specific category arrays without stalling background queues
             self.allRemoteModules[source] = modules
             self.syncAllInstallationStatuses()
 
@@ -145,36 +145,31 @@ class StoreViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Initial loading wrapper matching your structural setup invocation
     func loadStore(wrapper: SwordEngineWrapper) {
         guard let _ = wrapper.engine else { return }
-        self.isLoading = true
+        if self.allRemoteModules.isEmpty { self.isLoading = true }
         taskManager?.startSynchronizationPipeline()
     }
 
-    /// Triggers a clean concurrent download run across all source clusters
     func refreshStore() {
         allRemoteModules.removeAll()
         isLoading = true
         taskManager?.startSynchronizationPipeline()
     }
 
-    /// Installs a module using the background engine to avoid UI hangs
     func install(module: XbibleEngine.SwordModule, wrapper: SwordEngineWrapper) {
         guard let engine = wrapper.engine, let taskManager = taskManager else { return }
         
-        // Immediate UI feedback state
+        // Retain dynamic interactions immediately so users aren't locked out during live indexing
         installationStates[module.name] = .pending
         taskManager.installModule(engine: engine, source: module.source, moduleName: module.name, skipDatabase: false)
     }
 
-    /// Stops an active download/installation
     func cancelInstall(moduleName: String) {
         taskManager?.cancelInstallation(moduleName: moduleName)
         installationStates[moduleName] = .idle
     }
 
-    /// Batch check against the disk to see what is already installed
     func syncAllInstallationStatuses() {
         guard let taskManager = taskManager else { return }
         

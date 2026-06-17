@@ -6,12 +6,13 @@
 import Foundation
 
 enum SidebarItem: Hashable, CaseIterable, Equatable  {
-    case study, store, all, bible, commentary, dictionary, glossary, lexicons, dailyDevotional, essays, generalBooks, unorthodox, bibleTimeline, audioBible, maps
+    case study, store, all, bible, tools, commentary, dictionary, glossary, lexicons, dailyDevotional, essays, generalBooks, unorthodox, bibleTimeline, audioBible, maps
     
     var title: String {
         switch self {
         case .study: return "Study"
         case .store: return "Store"
+        case .tools: return "Tools"
         case .all: return "All Library"
         case .bible: return "Biblical Texts"
         case .commentary: return "Commentaries"
@@ -31,7 +32,8 @@ enum SidebarItem: Hashable, CaseIterable, Equatable  {
     var icon: String {
         switch self {
         case .study: return "book"
-        case .store: return "cart"
+        case .store: return "bag"
+        case .tools: return "wrench.and.screwdriver"
         case .all: return "books.vertical"
         case .bible: return "book.closed"
         case .commentary: return "text.quote"

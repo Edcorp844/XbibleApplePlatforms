@@ -33,6 +33,23 @@
 		AA0320962FD8F3F8002F79BB /* X-BibleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "X-BibleUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AAB071AB2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-Bible" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AudioStoreView.swift,
+			);
+			target = AA03207C2FD8F3F6002F79BB /* X-Bible */;
+		};
+		AAB071AC2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-BibleTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AudioStoreView.swift,
+			);
+			target = AA03208B2FD8F3F8002F79BB /* X-BibleTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA03207F2FD8F3F6002F79BB /* X-Bible */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -41,6 +58,10 @@
 		};
 		AA03208F2FD8F3F8002F79BB /* X-BibleTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AAB071AB2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-Bible" target */,
+				AAB071AC2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-BibleTests" target */,
+			);
 			path = "X-BibleTests";
 			sourceTree = "<group>";
 		};

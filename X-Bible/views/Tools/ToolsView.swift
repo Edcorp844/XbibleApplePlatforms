@@ -6,71 +6,29 @@ struct ToolsView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                // Section Header
-                Text("AUDIO")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
-                
-                // Navigation Action Rows
-                VStack(spacing: 0) {
-                    // 1. Audio Bible Row + Quick Store Link
-                    NavigationLink(destination: AudioBibleView(viewModel: audioViewModel)) {
-                        HStack {
-                            Text("Audio Bible")
-                                .font(.body)
-                                .foregroundColor(.primary)
-                                .lineLimit(1) // Ensures strict text clipping if title exceeds length
-                            
-                            Spacer()
-                            
-                            // Emergency inline shortcut to the store
-                            NavigationLink(destination: AudioStoreView()) {
-                                Text("Get Store")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.blue)
-                                    .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain) // Prevents the outer row tap from firing this button
-                        }
-                        .padding()
-                        //.background(Color(.selection).opacity(0.05))
+            List {
+                // Section layout container handles headers and rows natively
+                Section {
+                    // Row 1: Primary Audio Bible link
+                    HStack {
+                        NavigationLink("Audio Bible", destination: AudioBibleView(viewModel: audioViewModel))
+                            .foregroundColor(.primary)
                     }
                     
-                    Divider()
-                        .padding(.leading)
-                    
-                    // 2. Direct Audio Store Row
+                    // Row 2: Direct Audio Store link
                     NavigationLink(destination: AudioStoreView()) {
-                        HStack {
-                            Text("Audio Store")
-                                .font(.body)
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                            
-                            Spacer()
-                            
-                            Image(systemName: "chevron.right")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding()
-                       // .background(Color(.unemphasizedSelectedTextBackgroundColor).opacity(0.05))
+                        Text("Audio Store")
+                            .foregroundColor(.primary)
                     }
+                } header: {
+                    Text("AUDIO")
+                        .font(.caption)
+                        .fontWeight(.semibold)
                 }
-                //.background(Color(.windowBackgroundColor))
-                .cornerRadius(10)
-                .padding(.horizontal)
-                
-                Spacer()
             }
-            .padding(.top)
+            #if os(iOS)
+            .listStyle(.insetGrouped) // Delivers standard rounded card formatting automatically
+            #endif
             .navigationTitle("Tools")
         }
     }

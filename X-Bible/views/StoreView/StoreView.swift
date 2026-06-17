@@ -16,15 +16,25 @@ struct StoreView: View {
     @State private var expandedLanguages: Set<String> = []
 
     // MARK: - Body
-    @State private var activeTab: CategoryTab = .allCategories
+    @State private var activeTab: CategoryTab = .all
     var body: some View {
         NavigationStack{
             ScrollView(.vertical){
-                CategoryTabBar(selection: $activeTab)
-                    .padding(.horizontal, 16)
                 mainCatalogContent
             }
+            .safeAreaInset(edge: .top){
+                CategoryTabBar(selection: $activeTab)
+                    .padding(.horizontal, 16)
+            }
             .navigationTitle("Store")
+            .refreshable {
+                        await withCheckedContinuation { continuation in
+                            viewModel.refreshStore()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                continuation.resume()
+                            }
+                        }
+                    }
         }
         .onAppear {
             viewModel.setup(modelContext: modelContext, wrapper: wrapper)
@@ -32,9 +42,8 @@ struct StoreView: View {
         .onChange(of: viewModel.allRemoteModules) { oldValue, newValue in
             updateSelectedCategory()
         }
-        // Syncs your layout state dynamically when tapping tabs without changing your layout
         .onChange(of: activeTab) { oldValue, newValue in
-            if newValue != .allCategories {
+            if newValue != .all {
                 withAnimation { selectedCategory = newValue.title }
             }
         }
@@ -202,33 +211,51 @@ protocol CategoryTabItem: CaseIterable, Hashable, Equatable{
 
 
 enum CategoryTab: CategoryTabItem {
-    case allCategories
-    case bibleTexts
-    case commentaries
-    case glossaries
-    case books
-    case maps
+    case  all
+    case audio
+    case bible
+    case commentary
+    case dictionary
+    case glossary
+    case lexicons
+    case dailyDevotional
+    case essays
+    case generalBooks
+    case unorthodox
+    case bibleTimeline
     
     // Dynamically matched string representations aligning precisely to FFI payloads
     var title: String {
         return switch self{
-        case .allCategories: "All"
-        case .bibleTexts: "Biblical Texts"
-        case .commentaries: "Commentaries"
-        case .glossaries: "Glossaries"
-        case .books: "General Books"
-        case .maps: "Maps"
+        case .all:  "All Library"
+        case .audio: "Audio"
+        case .bible:  "Biblical Texts"
+        case .commentary:  "Commentaries"
+        case .dictionary:  "Dictionaries"
+        case .lexicons:  "Lexicons"
+        case .glossary:  "Glossaries"
+        case .dailyDevotional:  "Daily Devotionals"
+        case .essays: "Essays"
+        case .generalBooks:  "Others"
+        case .unorthodox: "Cults"
+        case .bibleTimeline: "Timeline"
         }
     }
     
     var symbol: String {
         return switch self{
-        case .allCategories: "person.fill"
-        case .bibleTexts: "cart.fill"
-        case .commentaries: "text.bubble.fill"
-        case .glossaries: "person.fill"
-        case .books: "cart.fill"
-        case .maps: "cart.fill"
+        case .all: "books.vertical"
+        case .audio: "speaker.wave.2"
+        case .bible:  "book.closed"
+        case .commentary: "text.quote"
+        case .dictionary:  "character.book.closed"
+        case .glossary: "character.book.closed"
+        case .lexicons:  "abc"
+        case .dailyDevotional: "sun.max"
+        case .essays:  "text.justify.left"
+        case .generalBooks:  "books.vertical"
+        case .unorthodox:  "exclamationmark.triangle"
+        case .bibleTimeline: "calendar.day.timeline.left"
         }
     }
     
@@ -238,19 +265,25 @@ enum CategoryTab: CategoryTabItem {
     
     var activeBackground: Color {
         return switch self{
-        case .allCategories: .accent
-        case .bibleTexts: .green
-        case .commentaries: .cyan
-        case .glossaries: .green
-        case .books: .orange
-        case .maps: .indigo
+        case .all: .pink
+        case .audio: .red
+        case .bible:  .blue
+        case .commentary: .brown
+        case .dictionary:  .gray
+        case .glossary: .teal
+        case .lexicons:  .mint
+        case .dailyDevotional: .green
+        case .essays:  .purple
+        case .generalBooks:  .orange
+        case .unorthodox:  .yellow
+        case .bibleTimeline: .red
         }
     }
 }
 
 struct CategoryTabBar<Tab: CategoryTabItem> : View {
     var spacing: CGFloat = 8
-    var trailingVisibility: CGFloat = 25
+    var trailingVisibility: CGFloat = 16
     var isGestureEnabled: Bool = false
     @Binding var selection: Tab
     @State private var tabTitleSizes: [Tab: CGSize] = [:]
@@ -276,7 +309,7 @@ struct CategoryTabBar<Tab: CategoryTabItem> : View {
                 }
             }
         }
-        .padding(.trailing, isLastTabActive ? 0 : trailingVisibility)
+        //.padding(.trailing, isLastTabActive ? 0 : trailingVisibility)
         .frame(height: 38)
         .contentShape(.rect)
         .animation(animation, value: selection)
@@ -328,6 +361,7 @@ struct CategoryTabBar<Tab: CategoryTabItem> : View {
         .clipShape(.capsule)
         .contentShape(.capsule)
         .geometryGroup()
+        .glassEffect()
         
         .onTapGesture {
             if let lastTab = allTabs.last, let previousTab , selection == tab {
@@ -369,7 +403,7 @@ struct CategoryTabBar<Tab: CategoryTabItem> : View {
 
 
 struct StoreViewNew: View {
-    @State private var activeTab: CategoryTab = .allCategories
+    @State private var activeTab: CategoryTab = .all
     var body: some View {
         NavigationStack{
             ScrollView(.vertical){
@@ -381,8 +415,8 @@ struct StoreViewNew: View {
     }
 }
 
-#Preview {
-    Group {
-        StoreViewNew()
-    }
-}
+//#Preview {
+//    Group {
+//        StoreViewNew()
+//    }
+//}

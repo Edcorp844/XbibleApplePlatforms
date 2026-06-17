@@ -1,6 +1,6 @@
-//
 //  StudyView.swift
 //  XBible
+//
 //  Created by Zoe Brooklyn on 4/21/26.
 //
 
@@ -59,8 +59,6 @@ struct StudyView: View {
     @State private var statusMessage = "Ready"
     
     var body: some View {
-        // --- FIXED TOUCH BAR PROPERTIES ---
-        // Native SwiftUI uses @ViewBuilder definitions instead of custom wrappers.
         // --- NATIVE SWIFTUI TOUCH BAR LAYOUT ---
 #if os(macOS)
         let bibleStudyTouchBar = Group {
@@ -75,8 +73,6 @@ struct StudyView: View {
                 }
                 .cornerRadius(8)
                 .disabled(!canGoToPrevious())
-                // Native SwiftUI presence mapping handles user customization levels safely
-                
                 .touchBarItemPresence(.required("xbible.study.prevChapter"))
                 
                 Button(action: {
@@ -110,7 +106,6 @@ struct StudyView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         isSplitViewPresented.toggle()
                     }
-                    // 💡 FORCE FOCUS RE-ANCHORING AFTER A STRUCTURAL LAYOUT SHIFT
                     DispatchQueue.main.async {
                         self.isStudyViewFocused = false
                         self.isStudyViewFocused = true
@@ -125,7 +120,7 @@ struct StudyView: View {
                 .cornerRadius(8)
                 .touchBarItemPresence(.default("xbible.study.toggleStudyTools"))            }
         }
-            .buttonStyle(.bordered) // Apply standard sizing layout globally to the items
+            .buttonStyle(.bordered)
 #endif
         
         HStack(spacing: 0) {
@@ -163,7 +158,7 @@ struct StudyView: View {
                 )
                 .transition(.move(edge: .trailing))
             }
-            #endif
+#endif
         }
 #if os(macOS)
         .background(StudyViewFirstResponder(isFirstResponder: Binding(
@@ -179,29 +174,24 @@ struct StudyView: View {
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search...")
         .toolbar {
-            
             ToolbarItemGroup(placement: .navigation) {
-                
-                // 1. Module Selection
                 PopoverButton(
                     label: wrapper.selectedModule,
+                    title: "Bible Versions",
                     isPresented: $showModulePicker
                 ) {
                     modulePickerContent
                 }
                 
-                // 2. Book Selection (Grid)
-                PopoverButton(label: wrapper.selectedBook, isPresented: $showBookPicker) {
+                PopoverButton(label: wrapper.selectedBook, title: "Select Book", isPresented: $showBookPicker) {
                     bookPickerContent
                 }
                 
-                // 3. Chapter Selection (Number Grid)
-                PopoverButton(label: "\(wrapper.selectedChapter)", isPresented: $showChapterPicker) {
+                PopoverButton(label: "\(wrapper.selectedChapter)", title: "Chapter", isPresented: $showChapterPicker) {
                     chapterPickerContent
                 }
             }
         }
-
 #endif
         
         .onAppear {
@@ -214,48 +204,35 @@ struct StudyView: View {
             self.isStudyViewFocused = true
         }
         
-
-        #if os(iOS)
-        .toolbar(){
-            ToolbarItem(placement: .topBarLeading){
-                PopoverButton(label: "\(wrapper.selectedBook) \(wrapper.selectedChapter)", isPresented: $showBookPicker) {
-                    bookPickerContent
-                    
+#if os(iOS)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                PopoverButton(
+                    label: "\(wrapper.selectedBook) \(wrapper.selectedChapter)",
+                    title: "Select Passage",
+                    isPresented: $showBookPicker
+                ) {
+                    VStack(spacing: 0) {
+                        bookPickerContent
+                        Divider().padding(.vertical, 8)
+                        chapterPickerContent
+                    }
                 }
             }
             
-            ToolbarSpacer(.flexible, placement:  .topBarLeading)
-            ToolbarItem(placement: .topBarLeading){
+            ToolbarSpacer(.flexible, placement: .topBarLeading)
+            
+            ToolbarItem(placement: .topBarLeading) {
                 PopoverButton(
                     label: wrapper.selectedModule,
+                    title: "Bible Versions",
                     isPresented: $showModulePicker
                 ) {
                     modulePickerContent
-                    
                 }
             }
-            
-            ToolbarItem {
-                Button(action: {
-                    // Search action goes here
-                }) {
-                    Image(systemName: "magnifyingglass")
-                }
-            }
-            ToolbarItem {
-                Button(action: {
-                    // Search action goes here
-                }) {
-                    Image(systemName: "ellipsis")
-                }
-            }
-            
         }
-        
 #endif
-        
-       
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
         
         .backgroundStyle(.clear)
         .onChange(of: wrapper.selectedModule) { _ in updateBooks() }
@@ -270,60 +247,55 @@ struct StudyView: View {
     // --- UI HELPERS ---
     
     @ViewBuilder
-        private var studyReaderPane: some View {
-            // Use SwiftUI helper directly instead of platform conditional closures
-            GeometryReader { geometry in
-                let isMobile = geometry.size.width < 500
-                
-                ZStack {
-                    ScrollView {
-                        HStack {
-                            Spacer(minLength: 0)
-                            VStack(alignment: .leading, spacing: isMobile ? 24 : 40) {
-                                ForEach(0..<sections.count, id: \.self) { index in
-                                    sectionView(sections[index])
-                                }
+    private var studyReaderPane: some View {
+        GeometryReader { geometry in
+            let isMobile = geometry.size.width < 500
+            
+            ZStack {
+                ScrollView {
+                    HStack {
+                        Spacer(minLength: 0)
+                        VStack(alignment: .leading, spacing: isMobile ? 24 : 40) {
+                            ForEach(0..<sections.count, id: \.self) { index in
+                                sectionView(sections[index])
                             }
-                            .padding(.horizontal, isMobile ? 16 : 40)
-                            .padding(.vertical, isMobile ? 20 : 40)
-                            // Removes fixed min widths that crush mobile device rendering frames
-                            .frame(maxWidth: isMobile ? .infinity : 1200)
-                            Spacer(minLength: 0)
                         }
-                        .padding()
+                        .padding(.horizontal, isMobile ? 16 : 40)
+                        .padding(.vertical, isMobile ? 20 : 40)
+                        .frame(maxWidth: isMobile ? .infinity : 1200)
+                        Spacer(minLength: 0)
                     }
-                    
-                    HStack (alignment: .bottom){
-                        NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
-                           // .padding(.leading, 8)
-                        Spacer()
-                        NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
-                           // .padding(.trailing, 8)
-                    }.padding()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        
-        @ViewBuilder
-        private func sectionView(_ section: ModuleSection) -> some View {
-            VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
-                if !section.title.isEmpty {
-                    // Ensure dynamic layouts pass modern generic array bounds cleanly
-                    FlowLayout(spacing: 8) {
-                        ForEach(0..<section.title.count, id: \.self) { index in
-                            wordView(for: section, at: index)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-
+                    .padding()
                 }
                 
-                ForEach(section.verses, id: \.osisId) { verse in
-                    verseView(verse)
+                HStack(alignment: .bottom) {
+                    NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
+                    Spacer()
+                    NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
                 }
+                .padding()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    @ViewBuilder
+    private func sectionView(_ section: ModuleSection) -> some View {
+        VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
+            if !section.title.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(0..<section.title.count, id: \.self) { index in
+                        wordView(for: section, at: index)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            
+            ForEach(section.verses, id: \.osisId) { verse in
+                verseView(verse)
+            }
+        }
+    }
     
     private func verseView(_ verse: XbibleEngine.Verse) -> some View {
         VerseView(
@@ -354,75 +326,83 @@ struct StudyView: View {
         let total = max(1, chapters.count)
         
         VStack(alignment: .leading, spacing: 12) {
-            Text("Chapter").font(.headline)
-            ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                    ForEach(1...total, id: \.self) { ch in
-                        chapterCell(for: ch)
-                    }
+            Text("Chapters")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
+            
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 10) {
+                ForEach(1...total, id: \.self) { ch in
+                    chapterCell(for: ch)
                 }
             }
         }
         .padding()
-        #if os(macOS)
-        .frame(width: 280, height: 350)
-        #endif
+        // Responsive size caps that respect both macOS windows and iPad displays elegantly
+        .frame(minWidth: 280, maxWidth: 320)
+        .frame(height: 350)
     }
     
     private var modulePickerContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Bible Versions").font(.headline).padding(.bottom, 8)
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
-                    ForEach(availableModules, id: \.name) { module in
-                        moduleSelectionRow(
-                            module.name,
-                            language: module.language,
-                            isSelected: wrapper.selectedModule == module.name
-                        ) {
-                            wrapper.selectedModule = module.name
-                            showModulePicker = false
-                        }
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 140))], spacing: 12) {
+                ForEach(availableModules, id: \.name) { module in
+                    moduleSelectionRow(
+                        module.name,
+                        language: module.language,
+                        isSelected: wrapper.selectedModule == module.name
+                    ) {
+                        wrapper.selectedModule = module.name
+                        showModulePicker = false
                     }
                 }
             }
+            .padding(.top, 4)
         }
         .padding()
-#if os(macOS)
-        .frame(width: 220)
-        #endif
+        .frame(minWidth: 220, maxWidth: 280)
+        .frame(height: 300)
     }
     
     private var bookPickerContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Select Book").font(.headline)
+            Text("Books")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
+            
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 95))], spacing: 10) {
                     ForEach(availableBooks, id: \.name) { book in
                         selectionRow(book.name, isSelected: wrapper.selectedBook == book.name) {
                             wrapper.selectedBook = book.name
+                            #if os(macOS)
                             showBookPicker = false
+                            #endif
                         }
                     }
                 }
+                .padding(.top, 2)
             }
         }
         .padding()
-#if os(macOS)
-        .frame(width: 500, height: 400)
-        #endif
+        // Expanded boundaries specifically tailored for regular iPad split frames or landscape options
+        .frame(minWidth: 460, maxWidth: 520)
+        .frame(height: 400)
     }
     
     func chapterCell(for ch: Int) -> some View {
         Button(action: {
             wrapper.selectedChapter = ch
             showChapterPicker = false
+            showBookPicker = false // Closes combined sheet on iOS
         }) {
             Text("\(ch)")
-                .font(.system(size: 13, weight: .medium))
-                .frame(maxWidth: .infinity, minHeight: 32)
-                .background(wrapper.selectedChapter == ch ? Color.accentColor : Color.primary.opacity(0.1))
-                .cornerRadius(6)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .background(wrapper.selectedChapter == ch ? Color.accentColor : Color.primary.opacity(0.08))
+                .foregroundColor(wrapper.selectedChapter == ch ? .white : .primary)
+                .cornerRadius(8)
         }
         .buttonStyle(.plain)
     }
@@ -430,11 +410,12 @@ struct StudyView: View {
     func selectionRow(_ text: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text)
+                .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(isSelected ? Color.accentColor : Color.clear)
-                .contentShape(Rectangle())
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .background(isSelected ? Color.accentColor : Color.primary.opacity(0.05))
+                .foregroundColor(isSelected ? .white : .primary)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -442,23 +423,24 @@ struct StudyView: View {
     
     func moduleSelectionRow(_ version: String, language: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading) {
+            VStack(alignment: .center, spacing: 2) {
                 Text(version)
-                Text(language)
-                    .font(.system(.caption))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14, weight: .bold))
+                Text(language.uppercased())
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.accentColor : Color.clear)
-            .contentShape(Rectangle())
+            .padding(.vertical, 10)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? Color.accentColor : Color.primary.opacity(0.05))
+            .foregroundColor(isSelected ? .white : .primary)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
     }
     
-    // --- LOGIC ---
+    // --- ENGINE CONNECTIVITY LOGIC ---
     
     func initializeData() {
         guard let engine = wrapper.engine else { return }
@@ -518,18 +500,12 @@ struct StudyView: View {
         
         wrapper.engineQueue.async {
             let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
-            let show = engine.getContent(moduleName: currentModule, reference: ref)
-            
-            print("Content: \(show)")
-            
             DispatchQueue.main.async {
                 self.sections = results
                 self.loadCommentaryContent()
             }
         }
     }
-    
-    // --- LOOKUP ACTIONS ---
     
     func lookupWord(_ word: XbibleEngine.Word) {
         let cleanWord = word.text.trimmingCharacters(in: .punctuationCharacters)
@@ -543,11 +519,7 @@ struct StudyView: View {
         }
         isDictionaryLoading = true
         
-        let query = DictionaryQuery(
-            word: cleanWord,
-            strongs: [],
-            language: word.language
-        )
+        let query = DictionaryQuery(word: cleanWord, strongs: [], language: word.language)
         
         wrapper.engineQueue.async {
             guard let engine = wrapper.engine else { return }
@@ -603,16 +575,12 @@ struct StudyView: View {
         isLexiconLoading = true
         let reference = selectedStrongsForLookup
         let currentModule = selectedLexiconModule
-
         let targetLanguage = availableLexicons.first(where: { $0.name == currentModule })?.language ?? "en"
 
         wrapper.engineQueue.async {
             guard let engine = wrapper.engine else { return }
-
             let query = LexiconQuery(strongsNumber: reference, language: targetLanguage)
             let response = engine.lookupStrongsNumber(query: query)
-            
-            print (response)
 
             DispatchQueue.main.async {
                 self.lexiconResults = response.results
@@ -658,8 +626,6 @@ struct StudyView: View {
         }
     }
     
-    // --- NAVIGATION LOGIC ---
-    
     func canGoToPrevious() -> Bool {
         guard let currentIndex = availableBooks.firstIndex(where: { $0.name == wrapper.selectedBook }) else { return false }
         return wrapper.selectedChapter > 1 || currentIndex > 0
@@ -700,20 +666,19 @@ struct StudyView: View {
 
 struct PopoverButton<Content: View>: View {
     let label: String
+    let title: String
     @Binding var isPresented: Bool
-    let content: () -> Content
+    @ViewBuilder let content: () -> Content
 
     var body: some View {
         Button(action: { isPresented.toggle() }) {
             HStack(spacing: 4) {
                 Text(label)
-                
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .opacity(0.5)
             }
-            // ─── THE DIRECT FIXES FOR THE PICKER LABEL ───
-            .fixedSize(horizontal: true, vertical: false) // Forces the view to take its ideal horizontal width
+            .fixedSize(horizontal: true, vertical: false)
             .layoutPriority(1)
             
 #if os(macOS)
@@ -722,26 +687,36 @@ struct PopoverButton<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: 20).fill(.ultraThinMaterial))
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
 #else
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            // .background(Color.accentColor.opacity(0.1))
-            .cornerRadius(12)
+            .cornerRadius(16)
 #endif
         }
         .buttonStyle(.plain)
-        .padding(.all, 0)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            content()
 #if os(iOS)
-            // Forces iPhone to display this as a bottom modal sheet instead of a tiny popover bubble
-                .presentationCompactAdaptation(.sheet)
-            
-            // Gives it a clean drag grabber handle at the top of the sheet
-                .presentationDragIndicator(.visible)
-            
-            // Controls the height of the bottom sheet.
-            // .medium takes up roughly half the screen, or use .fraction(0.4) for a custom size
-                .presentationDetents([.medium, .large])
+            // Modern sheet presentation structure on iPhone / iPad fallbacks
+            NavigationStack {
+                content()
+                    .padding()
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(action: { isPresented = false }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+            }
+            .presentationCompactAdaptation(.sheet)
+            .presentationDragIndicator(.visible)
+            .presentationDetents([.medium, .large])
+#else
+            content()
 #endif
         }
     }

@@ -21,7 +21,7 @@ struct LanguageSection: View {
             if isExpanded {
                 modulesScrollView
                     .transition(.opacity.combined(with: .move(edge: .top)))
-                    .clipped() // Prevents horizontal scroll items from bleeding during frame animation
+                    .clipped()
             }
 
             Divider()
@@ -61,12 +61,19 @@ struct LanguageSection: View {
     private var modulesScrollView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 20) {
-                ForEach(modules, id: \.name) { module in
+                ForEach(modules, id: \.compoundId){ module in
                     bookViewBuilder(module)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
+    }
+}
+
+
+extension XbibleEngine.SwordModule {
+    var compoundId: String {
+        return "\(source)-\(name)"
     }
 }
