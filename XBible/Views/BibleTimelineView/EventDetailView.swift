@@ -25,7 +25,12 @@ struct EventDetailView: View {
                 .buttonStyle(.plain)
             }
             .padding()
+            #if os(macOS)
             .background(Color(NSColor.windowBackgroundColor))
+            #endif
+            #if os(iOS)
+            .background(.background)
+            #endif
 
             Divider()
 
@@ -67,7 +72,12 @@ struct EventDetailView: View {
                             Button(ref) {
                                 // Jump to reader logic
                             }
+                            #if os(macOS)
                             .buttonStyle(.link)
+                            #endif
+                            #if os(iOS)
+                            .buttonStyle(.plain)
+                            #endif
                         }
                     }
                 }

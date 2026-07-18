@@ -32,11 +32,21 @@ struct PersistentAudioPlayerBar: View {
                     // ================= 2. CENTER: COMPACT TRACK METADATA =================
                     HStack(spacing: 8) {
                         if let artwork = viewModel.decodedArtwork {
+                            
+                            #if os(macOS)
                             Image(nsImage: artwork)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 40, height: 40)
                                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            #else
+                            Image(uiImage: artwork)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 40, height: 40)
+                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            #endif
+                                
                         } else {
                             Image(systemName: "book.pages.fill")
                                 .font(.system(size: 20))

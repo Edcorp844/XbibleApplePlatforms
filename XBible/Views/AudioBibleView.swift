@@ -53,6 +53,7 @@ struct AudioBibleView: View {
     }
 
     var body: some View {
+#if os(macOS)
         NavigationStack {
             GeometryReader { geometry in
                 ZStack {
@@ -245,30 +246,32 @@ struct AudioBibleView: View {
                                                         }) {
                                                             HStack(spacing: 14) {
                                                                 Group {
-                                                                    if let data = module.artwork.imageBytes(),
-                                                                       let compiledImage = { () -> NSImage? in
-                                                                           #if os(macOS)
-                                                                           return NSImage(data: data)
-                                                                           #else
-                                                                           return nil // If on iOS/UIKit, replace with: UIImage(data: data)
-                                                                           #endif
-                                                                       }() {
-                                                                        
-                                                                        // Render the extracted cover art image
-                                                                        Image(nsImage: compiledImage) // Use Image(uiImage:) if building for iOS
-                                                                            .resizable()
-                                                                            .scaledToFill()
-                                                                            .frame(width: 50, height: 50)
-                                                                            .cornerRadius(6)
-                                                                            .clipped()
+                                                                    if let data = module.artwork.imageBytes() {
+                                                                        #if os(macOS)
+                                                                        if let compiledImage = NSImage(data: data) {
+                                                                            Image(nsImage: compiledImage)
+                                                                                .resizable()
+                                                                                .scaledToFill()
+                                                                                .frame(width: 50, height: 50)
+                                                                                .cornerRadius(6)
+                                                                                .clipped()
+                                                                        } else {
+                                                                            FallbackBadge(module: module)
+                                                                        }
+                                                                        #else // iOS 26 Target
+                                                                        if let compiledImage = UIImage(data: data) {
+                                                                            Image(uiImage: compiledImage)
+                                                                                .resizable()
+                                                                                .scaledToFill()
+                                                                                .frame(width: 50, height: 50)
+                                                                                .cornerRadius(6)
+                                                                                .clipped()
+                                                                        } else {
+                                                                            FallbackBadge(module: module)
+                                                                        }
+                                                                        #endif
                                                                     } else {
-                                                                        // Fallback minimalist text badge if cover art bytes are empty or corrupted
-                                                                        Text((module.metadata?.displayTitle ?? "M").prefix(1).uppercased())
-                                                                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                                                                            .foregroundColor(.white.opacity(0.6))
-                                                                            .frame(width: 36, height: 36)
-                                                                            .background(Color.white.opacity(0.08))
-                                                                            .cornerRadius(6)
+                                                                        FallbackBadge(module: module)
                                                                     }
                                                                 }
                                                                 
@@ -333,9 +336,10 @@ struct AudioBibleView: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .frame(maxHeight: .infinity)
                     }
+#if os(macOS)
                     .frame(width: geometry.size.width * 0.88, height: geometry.size.height * 0.84)
                     .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                    
+                    #endif
                     // --- 3. FLOATING ACTION HUD (Bottom Right Corner Buttons) ---
                     VStack {
                         Spacer()
@@ -366,5 +370,7 @@ struct AudioBibleView: View {
                 LibraryCatalogView(viewModel: viewModel)
             }
         }
+        #endif
+        Text("Audio")
     }
 }

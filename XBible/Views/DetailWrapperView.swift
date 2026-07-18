@@ -15,6 +15,7 @@ struct DetailWrapperView: View {
     }
     
     var body: some View {
+#if os(macOS)
         ZStack(alignment: .bottom) {
             
             // Core main document pane contents
@@ -30,5 +31,9 @@ struct DetailWrapperView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: shouldShowFloatingBar)
+        
+        #else
+        DetailView(selection: selection, viewModel: audioViewModel)
+        #endif
     }
 }

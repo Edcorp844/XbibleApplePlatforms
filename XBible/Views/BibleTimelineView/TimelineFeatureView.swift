@@ -30,7 +30,11 @@ struct TimelineFeatureView: View {
                 // This offset trick keeps it in sync if you use a sync method,
                 // but the cleanest Mac way is nesting. See "The Sync Fix" below.
             }
+            #if os(macOS)
             .background(Color(.windowBackgroundColor))
+            #else
+            .background(.clear)
+            #endif
             .overlay(Divider(), alignment: .bottom)
 
             // 2. THE MAIN CONTENT

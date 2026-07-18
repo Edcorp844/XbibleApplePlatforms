@@ -14,7 +14,11 @@ public class AudioBibleViewModel: ObservableObject {
     @Published public var playbackState: PlaybackState? = nil
     @Published public var isLoading: Bool = false
     @Published public var selectedModule: AudioModuleInfo? = nil
+#if os(macOS)
     @Published public var decodedArtwork: NSImage? = nil // Use UIImage if targeting iOS/UIKit instead of macOS
+#else
+    @Published public var decodedArtwork: UIImage? = nil
+    #endif
     @Published public var backgroundGradientColors: [Color] = [Color.black]
     
     

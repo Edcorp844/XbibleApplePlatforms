@@ -375,14 +375,13 @@ struct SplitDetailPane: View {
                     Spacer()
                     if !commentaryResults.isEmpty {
                         Button(action: {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.setString(copyableText(for: commentaryResults), forType: .string)
+                            let textToCopy = copyableText(for: commentaryResults)
+                            PlatformPasteboard.copy(textToCopy)
                         }) {
                             Label("Copy", systemImage: "doc.on.doc")
                                 .font(.caption)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.borderless) // Bonus: .borderless is safe on both macOS and iOS!
                     }
                 }
             }

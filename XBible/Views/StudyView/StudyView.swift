@@ -7,7 +7,10 @@
 import SwiftUI
 import XbibleEngine
 import SwiftData
+
+#if os(macOS)
 import AppKit
+#endif
 
 struct StudyView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
@@ -59,6 +62,7 @@ struct StudyView: View {
         // --- FIXED TOUCH BAR PROPERTIES ---
         // Native SwiftUI uses @ViewBuilder definitions instead of custom wrappers.
         // --- NATIVE SWIFTUI TOUCH BAR LAYOUT ---
+#if os(macOS)
         let bibleStudyTouchBar = Group {
             Group {
                 Button(action: {
@@ -72,6 +76,7 @@ struct StudyView: View {
                 .cornerRadius(8)
                 .disabled(!canGoToPrevious())
                 // Native SwiftUI presence mapping handles user customization levels safely
+                
                 .touchBarItemPresence(.required("xbible.study.prevChapter"))
                 
                 Button(action: {
@@ -121,10 +126,11 @@ struct StudyView: View {
                 .touchBarItemPresence(.default("xbible.study.toggleStudyTools"))            }
         }
             .buttonStyle(.bordered) // Apply standard sizing layout globally to the items
+        #endif
         
         HStack(spacing: 0) {
             studyReaderPane
-            
+#if os(macOS)
             if isSplitViewPresented {
                 SplitDivider(detailWidth: $detailWidth)
                 
@@ -157,7 +163,9 @@ struct StudyView: View {
                 )
                 .transition(.move(edge: .trailing))
             }
+            #endif
         }
+        
         .background(StudyViewFirstResponder(isFirstResponder: Binding(
             get: { self.isStudyViewFocused },
             set: { self.isStudyViewFocused = $0 }
@@ -165,9 +173,12 @@ struct StudyView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isStudyViewFocused)
+#if os(macOS)
         .touchBar {
             bibleStudyTouchBar
         }
+        #endif
+       
         .onAppear {
             initializeData()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -200,7 +211,9 @@ struct StudyView: View {
                 }
             }
         }
+        #if os(macOS)
         .ignoresSafeArea(.container, edges: [.top, .bottom])
+        #endif
         .backgroundStyle(.clear)
         .onChange(of: wrapper.selectedModule) { _ in updateBooks() }
         .onChange(of: wrapper.selectedBook) { _ in
@@ -214,50 +227,62 @@ struct StudyView: View {
     // --- UI HELPERS ---
     
     @ViewBuilder
-    private var studyReaderPane: some View {
-        ZStack {
-            ScrollView {
-                HStack {
-                    Spacer(minLength: 0)
-                    VStack(alignment: .leading, spacing: 40) {
-                        ForEach(0..<sections.count, id: \.self) { index in
-                            sectionView(sections[index])
+        private var studyReaderPane: some View {
+            // Use SwiftUI helper directly instead of platform conditional closures
+            GeometryReader { geometry in
+                let isMobile = geometry.size.width < 500
+                
+                ZStack {
+                    ScrollView {
+                        HStack {
+                            Spacer(minLength: 0)
+                            VStack(alignment: .leading, spacing: isMobile ? 24 : 40) {
+                                ForEach(0..<sections.count, id: \.self) { index in
+                                    sectionView(sections[index])
+                                }
+                            }
+                            .padding(.horizontal, isMobile ? 16 : 40)
+                            .padding(.vertical, isMobile ? 20 : 40)
+                            // Removes fixed min widths that crush mobile device rendering frames
+                            .frame(maxWidth: isMobile ? .infinity : 1200)
+                            Spacer(minLength: 0)
                         }
                     }
-                    .padding(40)
-                    .frame(minWidth: 400, maxWidth: 1200)
-                    Spacer(minLength: 0)
-                }
-            }
-            
-            HStack {
-                NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
-                    .padding(.leading, 8)
-                Spacer()
-                NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
-                    .padding(.trailing, 8)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    @ViewBuilder
-    private func sectionView(_ section: ModuleSection) -> some View {
-        VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
-            if !section.title.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(0..<section.title.count, id: \.self) { index in
-                        wordView(for: section, at: index, )
+                    
+                    HStack {
+                        NavigationRectButton(icon: "chevron.left", action: goToPreviousChapter, isDisabled: !canGoToPrevious(), isSide: true)
+                            .padding(.leading, 8)
+                        Spacer()
+                        NavigationRectButton(icon: "chevron.right", action: goToNextChapter, isDisabled: !canGoToNext(), isSide: true)
+                            .padding(.trailing, 8)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
             }
-            
-            ForEach(section.verses, id: \.osisId) { verse in
-                verseView(verse)
+#if os(macOS)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            #endif
+        }
+        
+        @ViewBuilder
+        private func sectionView(_ section: ModuleSection) -> some View {
+            VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 20) {
+                if !section.title.isEmpty {
+                    // Ensure dynamic layouts pass modern generic array bounds cleanly
+                    FlowLayout(spacing: 8) {
+                        ForEach(0..<section.title.count, id: \.self) { index in
+                            wordView(for: section, at: index)
+                        }
+                    }
+#if os(macOS)
+                    .frame(maxWidth: .infinity, alignment: .center)
+#endif
+                }
+                
+                ForEach(section.verses, id: \.osisId) { verse in
+                    verseView(verse)
+                }
             }
         }
-    }
     
     private func verseView(_ verse: XbibleEngine.Verse) -> some View {
         VerseView(
@@ -684,29 +709,5 @@ enum StudyTab: String, CaseIterable, Identifiable {
         case .lexicon: return "abc"
         case .commentary: return "text.quote"
         }
-    }
-}
-
-private struct StudyViewFirstResponder: NSViewRepresentable {
-    @Binding var isFirstResponder: Bool
-
-    func makeNSView(context: Context) -> FirstResponderNSView {
-        FirstResponderNSView()
-    }
-
-    func updateNSView(_ nsView: FirstResponderNSView, context: Context) {
-        if isFirstResponder, nsView.window?.firstResponder !== nsView {
-            nsView.window?.makeFirstResponder(nsView)
-        }
-    }
-}
-
-class FirstResponderNSView: NSView {
-    override var acceptsFirstResponder: Bool { true }
-    override var needsPanelToBecomeKey: Bool { true }
-    
-    override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
-        self.window?.makeFirstResponder(self)
     }
 }

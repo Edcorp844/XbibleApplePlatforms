@@ -35,12 +35,14 @@ struct DetailView: View {
                 ContentUnavailableView("Feature Coming Soon", systemImage: "hammer")
             }
         }
+        #if os(macOS)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom) {
             if viewModel.selectedModule != nil && selection != .audioBible {
                 Color.clear.frame(height: 76)
             }
         }
+        #endif
     }
 }
 

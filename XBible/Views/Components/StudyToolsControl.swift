@@ -33,7 +33,11 @@ struct StudyToolsControl<T: Hashable & Equatable>: View {
                             // Selected Background Pill
                             if isSelected {
                                 RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                #if os(macOs)
                                     .fill(Color(nsColor: .controlAccentColor))
+#else
+                                    .fill(Color.primary)
+                                #endif
                                     .shadow(color: .black.opacity(0.05), radius: 1, x: 0, y: 1)
                                     .matchedGeometryEffect(id: "activeSegment", in: activeSegmentNamespace)
                             }
@@ -62,7 +66,9 @@ struct StudyToolsControl<T: Hashable & Equatable>: View {
         .padding(2)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
+            #if os(macOs)
                 .fill(Color(nsColor: .controlBackgroundColor))
+            #endif
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -71,17 +77,17 @@ struct StudyToolsControl<T: Hashable & Equatable>: View {
     }
 }
 
-// MARK: - Preview Simulator
-#Preview {
-    @Previewable @State var currentTab: String = "Dictionary"
-    
-    VStack {
-        StudyToolsControl(
-            selection: $currentTab,
-            items: ["Dictionary", "Lexicon", "Commentary"],
-            title: { $0 }
-        )
-    }
-    .padding()
-    .frame(width: 300)
-}
+//// MARK: - Preview Simulator
+//#Preview {
+//    @Previewable @State var currentTab: String = "Dictionary"
+//    
+//    VStack {
+//        StudyToolsControl(
+//            selection: $currentTab,
+//            items: ["Dictionary", "Lexicon", "Commentary"],
+//            title: { $0 }
+//        )
+//    }
+//    .padding()
+//    .frame(width: 300)
+//}

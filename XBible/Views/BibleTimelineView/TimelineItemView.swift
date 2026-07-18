@@ -51,7 +51,12 @@ struct TimelineItemView: View {
             .background(
                 // Corrected Name: UnevenRoundedRectangle
                 UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 8)
+                #if os(macOS)
                     .fill(Color(NSColor.windowBackgroundColor))
+                #else
+                    .fill(.clear)
+                #endif
+                
             )
             .overlay(
                 // Accent Bar (Matches left side curves)
