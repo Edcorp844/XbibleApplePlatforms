@@ -11,21 +11,23 @@ import XbibleEngine
 
 @main
 struct X_BibleApp: App {
-        @StateObject private var engineWrapper = SwordEngineWrapper()
-        @Environment(\.openWindow) private var openWindow
+    @StateObject private var engineWrapper = SwordEngineWrapper()
+    @Environment(\.openWindow) private var openWindow
     
-        var sharedModelContainer: ModelContainer = {
-            let schema = Schema([
-                StudyPageState.self,
-            ])
-            let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-    
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                fatalError("Could not create ModelContainer: \(error)")
-            }
-        }()
+    var sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            StudyPageState.self,
+            PendingInstallation.self,
+            TextConfig.self
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }()
     
     var body: some Scene {
         WindowGroup {
@@ -39,7 +41,6 @@ struct X_BibleApp: App {
             }
         }
         .environmentObject(engineWrapper)
-        .modelContainer(for: StudyPageState.self)
-        .modelContainer(for: PendingInstallation.self)
+        .modelContainer(sharedModelContainer)
     }
 }

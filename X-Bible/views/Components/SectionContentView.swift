@@ -12,54 +12,57 @@ struct SectionContentView: View {
     let sections: [XbibleEngine.Section]
     var onWordClick: ((XbibleEngine.Word) -> Void)? = nil
     
-    // Default optimized text sizing constants
-    private let titleFont: Font = .system(.title3, design: .serif, weight: .bold)
-    private let verseTextFont: Font = .system(.body, design: .serif)
+    @EnvironmentObject private var textConfigVM: TextConfigViewModel
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) { // Increased block spacing between sections
+        let config = textConfigVM.config
+        
+        // Dynamically compute layout spacers from global configuration line spacing
+        let lineSpacingFactor = CGFloat(config.lineSpacing)
+        let sectionSpacing = 24.0 * lineSpacingFactor
+        let titleBottomPadding = 6.0 * lineSpacingFactor
+        let verseVerticalPadding = 2.0 * lineSpacingFactor
+        let verseBlockSpacing = 14.0 * lineSpacingFactor
+        
+        VStack(alignment: .leading, spacing: sectionSpacing) {
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: 14) {
+                VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: verseBlockSpacing) {
                     
                     // --- 1. OPTIMIZED TITLE ROW ---
                     if !section.title.isEmpty {
-                        FlowLayout(spacing: 5) {
+                        FlowLayout(spacing: CGFloat(config.wordSpacing)) {
                             ForEach(Array(section.title.enumerated()), id: \.offset) { _, item in
-                                let commentaryTheme = WordView.Configuration(
-                                    fontSize: 12,
-                                )
-                                WordView(word: item,config: commentaryTheme, onWordTextClicked: {
+                                WordView(word: item, isTitle: true, onWordTextClicked: {
                                     onWordClick?(item)
                                 })
                             }
                         }
-                        .font(titleFont) // Cascades dynamic sizing to nested title strings
-                        .padding(.bottom, 6)
+                        .padding(.bottom, titleBottomPadding)
                     }
                     
-                    // --- 2. VERSE ROWS WITH BALANCED PACING ---
-                    // Explicit block type binding context fixes key path and inference compiler issues
+                    // --- 2. VERSE ROWS WITH DYNAMIC LINE AND WORD SPACING ---
                     ForEach(section.verses, id: \.osisId) { (verse: XbibleEngine.Verse) in
                         HStack(alignment: .top, spacing: 8) {
-                            FlowLayout(spacing: 6) {
+                            Text("\(verse.number)")
+                                .font(.system(size: CGFloat(config.fontSize) * 0.8, weight: .regular))
+                                .foregroundColor(.secondary)
+                                .padding(.trailing, 4)
+                                .baselineOffset(4)
+                            
+                            FlowLayout(spacing: CGFloat(config.wordSpacing)) {
                                 ForEach(Array(verse.words.enumerated()), id: \.offset) { _, word in
-                                    let commentaryTheme = WordView.Configuration(
-                                        fontSize: 12,
-                                    )
-                                    
-                                    WordView(word: word, config: commentaryTheme, onWordTextClicked: {
+                                    WordView(word: word, onWordTextClicked: {
                                         onWordClick?(word)
                                     })
                                 }
                             }
-                            .font(verseTextFont) // Gracefully applies a clean serif reading experience
                         }
-                        .padding(.vertical, 2) // Extra breathing room between long wrapped verses
+                        .padding(.vertical, verseVerticalPadding)
                     }
                 }
             }
         }
-        .padding(.horizontal, 16) // Balanced horizontal margins on all devices
-        .padding(.vertical, 20)   // Clean top/bottom scrolling safe zones
+        .padding(.horizontal, 16)
+        .padding(.vertical, 20)
     }
 }

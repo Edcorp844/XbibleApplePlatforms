@@ -13,23 +13,24 @@ struct VerseView: View {
     var onWordTextClicked: ((XbibleEngine.Word) -> Void)? = nil
     var onStrongsClicked: ((String) -> Void)? = nil
     
+    @EnvironmentObject private var textConfigVM: TextConfigViewModel
+    
     var body: some View {
+        let config = textConfigVM.config
+        
         HStack(alignment: .top, spacing: 0) {
             Text("\(verse.number)")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: config.fontSize * 0.8, weight: .regular))
                 .foregroundColor(.secondary)
-                .padding(.trailing, 4).baselineOffset(8)
-            
-            FlowLayout(spacing: 8) {
+                .padding(.trailing, 8)
+                .baselineOffset(4)
+             
+            FlowLayout(spacing: CGFloat(config.wordSpacing)) {
                 ForEach(0..<verse.words.count, id: \.self) { i in
                     let w = verse.words[i]
-                    let commentaryTheme = WordView.Configuration(
-                        fontSize: 18,
-                    )
 
                     WordView(
                         word: w,
-                        config: commentaryTheme,
                         onWordTextClicked: {
                             onWordTextClicked?(w)
                         },
@@ -39,6 +40,8 @@ struct VerseView: View {
                     )
                 }
             }
+            // Apply line spacing as vertical spacing or padding between rows/items if supported by FlowLayout, or wrap accordingly
+            .padding(.vertical, CGFloat(config.lineSpacing))
         }
     }
 }

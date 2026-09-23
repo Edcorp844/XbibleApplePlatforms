@@ -16,6 +16,8 @@ struct ContentView: View {
     
     private let coreAudioEngine: AudioEngine
     @StateObject private var audioViewModel: AudioBibleViewModel
+    @State private var textConfigVM: TextConfigViewModel?
+    
     @State private var expandMiniPlayer: Bool = false
     @State private var isFABExpanded: Bool = false
     
@@ -26,6 +28,23 @@ struct ContentView: View {
     }
     
     var body: some View {
+        Group {
+            if let vm = textConfigVM {
+                mainLayout
+                    .environmentObject(vm)
+            } else {
+                ProgressView()
+                    .onAppear {
+                        if textConfigVM == nil {
+                            textConfigVM = TextConfigViewModel(modelContext: modelContext)
+                        }
+                    }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var mainLayout: some View {
 #if os(macOS)
         // ─────────────────────────────────────────────────────────────────
         //  macOS HIERARCHICAL MATRIX (ZStack Wrapper Root Layout)
@@ -54,7 +73,6 @@ struct ContentView: View {
                     switch (wrapper.selectedSidebarItem){
                     case .study:
                         Tab(value: .none, role: .search) {
-                            // DetailView(selection: .all, viewModel: audioViewModel)
                             Text("here")
                         } label: {
                             Label("Search", systemImage: isFABExpanded ? "xmark" : "plus")
@@ -73,7 +91,7 @@ struct ContentView: View {
                 Tab(value: SidebarItem.study) {
                     DetailView(selection: .study, viewModel: audioViewModel)
                         .tabOverlay(isPresented: isFABExpanded){
-                            GridTabView(onSelect: {tab in
+                            GridTabView(onSelect: { tab in
                                 NotificationCenter.default.post(name: .requestTabDuplication, object: nil)
                                 isFABExpanded = false
                             }
@@ -196,12 +214,6 @@ struct ContentView: View {
     #if os(macOS)
     private var macOSTabView: some View {
         TabView(selection: $wrapper.selectedSidebarItem) {
-//            Tab(value: SidebarItem.all, role: .search) {
-//                DetailView(selection: .all, viewModel: audioViewModel)
-//            } label: {
-//                Label("Search", systemImage: "magnifyingglass")
-//            }
-            
             Tab(value: SidebarItem.study) {
                 DetailView(selection: .study, viewModel: audioViewModel)
             } label: {
@@ -261,8 +273,6 @@ struct ContentView: View {
     }
 }
 
-
-
 extension View {
     @ViewBuilder
     func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
@@ -280,25 +290,23 @@ extension View {
         isPresented: Bool,
         @ViewBuilder content: @escaping () -> Content,
         onDismiss: @escaping () -> ()
-    ) -> some View{
+    ) -> some View {
         self.modifier(
             TabOverlayModifier(
                 isPresented: isPresented,
-                viewContent:  content,
+                viewContent: content,
                 onDismiss: onDismiss
             )
         )
     }
-    
 }
-
 
 struct TabOverlayModifier<ViewContent: View>: ViewModifier {
     var isPresented: Bool
     @ViewBuilder var viewContent: ViewContent
     @State private var isViewAppearing = false
     var onDismiss: () -> ()
-    func body (content: Content)->some  View {
+    func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay{
@@ -313,7 +321,6 @@ struct TabOverlayModifier<ViewContent: View>: ViewModifier {
                                 }
                                 .ignoresSafeArea()
                                 .transition(.opacity)
-                            
                         }
                         
                         if isPresented {
@@ -339,5 +346,4 @@ struct TabOverlayModifier<ViewContent: View>: ViewModifier {
                 isViewAppearing = false
             }
     }
-    
 }

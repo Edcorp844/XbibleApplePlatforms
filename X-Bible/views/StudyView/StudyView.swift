@@ -35,6 +35,13 @@ struct StudyView: View {
     // iOS Tabs Gallery Sheet Presenter
     @State private var isShowingTabsGallery = false
     
+    // Toolbar Menus
+    @State private var showTweaksPopover = false
+    @State private var showMorePopover = false
+    
+    //text config
+    @Query private var textConfigs: [TextConfig]
+    
     @Namespace private var tabNamespace
     
     // MARK: - Helpers
@@ -80,6 +87,17 @@ struct StudyView: View {
     
     private var safeDefaultChapter: Int {
         wrapper.selectedChapter ?? 1
+    }
+    
+    private var currentConfig: TextConfig {
+        if let existing = textConfigs.first {
+            return existing
+        } else {
+            let newConfig = TextConfig()
+            modelContext.insert(newConfig)
+            try? modelContext.save()
+            return newConfig
+        }
     }
     
     init() { }
@@ -245,18 +263,40 @@ struct StudyView: View {
                 
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
-                        // TODO: show tweaks / settings
+                        showTweaksPopover.toggle()
                     } label: {
                         Image(systemName: "textformat")
                     }
                     .help("Tweaks & Settings")
+                    .popover(isPresented: $showTweaksPopover, arrowEdge: .bottom) {
+                        FontSettingsContent()
+                    }
                     
                     Button {
-                        // more actions
+                        showMorePopover.toggle()
                     } label: {
                         Image(systemName: "ellipsis")
                     }
                     .help("More")
+                    .popover(isPresented: $showMorePopover, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button("Duplicate Current Tab") {
+                                showMorePopover = false
+                                duplicateCurrentTab()
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Divider()
+                            
+                            Button("Export Passage...") {
+                                showMorePopover = false
+                                // TODO: Add export action
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(12)
+                        .frame(width: 180)
+                    }
                 }
                 
                 ToolbarSpacer(.fixed)

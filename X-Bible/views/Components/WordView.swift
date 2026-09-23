@@ -10,95 +10,69 @@ import XbibleEngine
 
 struct WordView: View {
     let word: XbibleEngine.Word
-    let config: Configuration
+    var isTitle: Bool
+    
+    // Read the global environment view model
+    @EnvironmentObject private var textConfigVM: TextConfigViewModel
     
     var onWordTextClicked: (() -> Void)? = nil
     var onStrongsClicked: ((String) -> Void)? = nil
 
-    // Initialize with a default config instance so your current layouts won't break
     init(
         word: XbibleEngine.Word,
-        config: Configuration = .default,
+        isTitle: Bool = false,
         onWordTextClicked: (() -> Void)? = nil,
         onStrongsClicked: ((String) -> Void)? = nil
     ) {
         self.word = word
-        self.config = config
+        self.isTitle = isTitle
         self.onWordTextClicked = onWordTextClicked
         self.onStrongsClicked = onStrongsClicked
     }
 
+    private var activeFontSize: CGFloat {
+        let baseSize = CGFloat(textConfigVM.config.fontSize)
+        return isTitle ? baseSize * 1.25 : baseSize
+    }
+
     var body: some View {
-        VStack(alignment: .center, spacing: config.verticalSpacing) {
+        let dbConfig = textConfigVM.config
+        let fontSize = activeFontSize
+        let verticalSpacing = CGFloat(dbConfig.lineSpacing) * 2
+
+        VStack(alignment: .center, spacing: verticalSpacing) {
             // Main Scripture Word Layout Node
             Text(word.text)
-                .font(.system(size: config.fontSize, design: config.fontDesign))
-                .fontWeight(word.isBoldText ? .bold : .regular)
+                .font(.system(size: fontSize, design: dbConfig.useSystemFont ? dbConfig.systemDesign : .serif))
+                .fontWeight((isTitle || word.isBoldText) ? .bold : .regular)
                 .italic(word.isItalic)
-                .foregroundColor(word.isRed ? config.redWordsColor : config.primaryTextColor)
+                .foregroundColor((dbConfig.showRedWords && word.isRed) ? .red : .primary)
                 .onTapGesture {
                     onWordTextClicked?()
                 }
-            
-            // Strong's Tag Metadata Container
-            if config.showStrongsTags, let lex = word.lex, !lex.strongs.isEmpty || !lex.morph.isEmpty {
+             
+            // Strong's Tag Metadata Container (driven by global configuration)
+            if dbConfig.showStrongs, let lex = word.lex, !lex.strongs.isEmpty || !lex.morph.isEmpty {
                 HStack(spacing: 3) {
-                    if let strong = lex.strongs.first {
+                    if dbConfig.showStrongs, let strong = lex.strongs.first {
                         Text(strong)
-                            .font(.system(size: config.strongsFontSize, weight: .bold, design: .monospaced))
-                            .foregroundColor(config.strongsTagColor)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.primary)
                             .onTapGesture {
                                 onStrongsClicked?(strong)
                             }
                     }
-                    if let morph = lex.morph.first {
+                    if dbConfig.showMorph, let morph = lex.morph.first {
                         Text(morph)
-                            .font(.system(size: config.morphFontSize))
-                            .foregroundColor(config.morphTagColor)
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
                     }
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(config.tagBackgroundColor)
+                .background(Color.secondary.opacity(0.15))
                 .cornerRadius(4)
             }
         }
-    }
-}
-
-// MARK: - Configuration Structure
-
-extension WordView {
-    struct Configuration {
-        // Text Size and Design Configuration
-        var fontSize: CGFloat = 17
-        var fontDesign: Font.Design = .serif
-        var verticalSpacing: CGFloat = 2
-        
-        // Color Configuration Overrides
-        var primaryTextColor: Color = .primary
-        var redWordsColor: Color = .red
-        
-        // Metadata Layer Configuration Toggle
-        var showStrongsTags: Bool = true
-        var strongsFontSize: CGFloat = 9
-        var morphFontSize: CGFloat = 8
-        
-        // Metadata Colors
-        var strongsTagColor: Color = .primary
-        var morphTagColor: Color = .secondary
-        var tagBackgroundColor: Color = Color.secondary.opacity(0.15)
-        
-        /// Standard configuration defaults matching original look
-        static let `default` = Configuration()
-        
-        /// Example preset configuration for a compact, secondary layout
-        static let compactNotes = Configuration(
-            fontSize: 14,
-            fontDesign: .serif,
-            verticalSpacing: 1,
-            primaryTextColor: .secondary,
-            showStrongsTags: false
-        )
     }
 }
