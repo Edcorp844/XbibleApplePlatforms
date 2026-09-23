@@ -11,9 +11,11 @@ import XbibleEngine
 @MainActor
 struct MediaControls: View {
     @ObservedObject var viewModel: AudioBibleViewModel
+    let inMiniPlayer : Bool
     
-    init(viewModel: AudioBibleViewModel) {
+    init(viewModel: AudioBibleViewModel, inMiniPlayer: Bool) {
         self.viewModel = viewModel
+        self.inMiniPlayer = inMiniPlayer
     }
     
     var body: some View {
@@ -37,6 +39,7 @@ struct MediaControls: View {
                 }) {
                     Image(systemName: "gobackward.15")
                 }
+                .font(inMiniPlayer ? .title3 : .largeTitle)
                 .disabled(viewModel.selectedModule == nil)
                 
                 Spacer()
@@ -47,6 +50,7 @@ struct MediaControls: View {
                 }) {
                     Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
                 }
+                .font(.largeTitle)
                 .disabled(viewModel.selectedModule == nil)
                 
                 Spacer()
@@ -57,9 +61,10 @@ struct MediaControls: View {
                 }) {
                     Image(systemName: "goforward.30")
                 }
+                .font(inMiniPlayer ? .title3 : .largeTitle)
                 .disabled(viewModel.selectedModule == nil)
             }
-            .font(.largeTitle)
+            
             .bold()
             
             Spacer()

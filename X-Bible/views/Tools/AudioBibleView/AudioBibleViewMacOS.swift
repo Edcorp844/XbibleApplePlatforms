@@ -93,7 +93,7 @@ struct AudioBibleViewMacOS: View {
             playerTimelineSlider
                 .padding(.bottom, 24)
             
-            MediaControls(viewModel: viewModel)
+            MediaControls(viewModel: viewModel, inMiniPlayer: false)
             Spacer()
         }
         .frame(width: width)

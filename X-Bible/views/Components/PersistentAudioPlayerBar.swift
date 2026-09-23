@@ -25,7 +25,7 @@ struct PersistentAudioPlayerBar: View {
                 HStack(spacing: 12) {
                     
                     // ================= 1. LEFT: MEDIA TRANSPORT ROW =================
-                    MediaControls(viewModel: viewModel)
+                    MediaControls(viewModel: viewModel, inMiniPlayer: true)
                         .fixedSize()
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
@@ -69,12 +69,6 @@ struct PersistentAudioPlayerBar: View {
                             let duration = Double(viewModel.selectedModule?.metadata?.durationMs ?? 3600000)
                             let current = Double(viewModel.currentTimeMs)
                             let isAudioPlaying = viewModel.isPlaying
-                            
-//                            HStack {
-//                                Text(viewModel.formatTime(ms: Int64(current))).font(.system(size: 8))
-//                                Spacer()
-//                                Text("-" + viewModel.formatTime(ms: Int64(max(0, duration - current)))).font(.system(size: 8))
-//                            }
                             
                             AnimatedCustomSlider(
                                 value: Binding<Double>(
@@ -121,7 +115,7 @@ struct PersistentAudioPlayerBar: View {
                 }
             }
             .padding(8)
-            .frame(maxWidth: 540)
+            .frame(maxWidth: 600)
             .glassEffect()
         }
     }

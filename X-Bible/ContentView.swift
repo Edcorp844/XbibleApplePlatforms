@@ -17,6 +17,7 @@ struct ContentView: View {
     private let coreAudioEngine: AudioEngine
     @StateObject private var audioViewModel: AudioBibleViewModel
     @State private var expandMiniPlayer: Bool = false
+    @State private var isFABExpanded: Bool = false
     
     init() {
         let engine = AudioEngine()
@@ -29,20 +30,11 @@ struct ContentView: View {
         // ─────────────────────────────────────────────────────────────────
         //  macOS HIERARCHICAL MATRIX (ZStack Wrapper Root Layout)
         // ─────────────────────────────────────────────────────────────────
-        ZStack(alignment: .bottom) {
-            macOSTabView
-            
-            if audioViewModel.selectedModule != nil && wrapper.selectedSidebarItem != .audioBible {
-                PersistentAudioPlayerBar(viewModel: audioViewModel)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
-                    .zIndex(2)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: audioViewModel.selectedModule != nil)
-        .onAppear { refreshEngineIfNeeded() }
-        .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
+        
+        macOSTabView
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: audioViewModel.selectedModule != nil)
+            .onAppear { refreshEngineIfNeeded() }
+            .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
         
 #else
         // ─────────────────────────────────────────────────────────────────
@@ -50,14 +42,45 @@ struct ContentView: View {
         // ─────────────────────────────────────────────────────────────────
         ZStack(alignment: .bottom) {
             TabView(selection: $wrapper.selectedSidebarItem) {
-                Tab(value: SidebarItem.all, role: .search) {
-                    DetailView(selection: .all, viewModel: audioViewModel)
-                } label: {
-                    Label("Search", systemImage: "magnifyingglass")
+                if sizeClass == .regular {
+                    Tab(value: SidebarItem.all, role: .search) {
+                        DetailView(selection: .all, viewModel: audioViewModel)
+                    } label: {
+                        Label("New Tab", systemImage: "magnifyingglass")
+                    }
+                    
+                }
+                else{
+                    switch (wrapper.selectedSidebarItem){
+                    case .study:
+                        Tab(value: .none, role: .search) {
+                            // DetailView(selection: .all, viewModel: audioViewModel)
+                            Text("here")
+                        } label: {
+                            Label("Search", systemImage: isFABExpanded ? "xmark" : "plus")
+                        }
+                        
+                    default: Tab(value: SidebarItem.all, role: .search) {
+                        DetailView(selection: .all, viewModel: audioViewModel)
+                    } label: {
+                        Label("New Tab", systemImage: "magnifyingglass")
+                    }
+                        
+                    }
+                    
                 }
                 
                 Tab(value: SidebarItem.study) {
                     DetailView(selection: .study, viewModel: audioViewModel)
+                        .tabOverlay(isPresented: isFABExpanded){
+                            GridTabView(onSelect: {tab in
+                                NotificationCenter.default.post(name: .requestTabDuplication, object: nil)
+                                isFABExpanded = false
+                            }
+                            )
+                        } onDismiss: {
+                            
+                        }
                 } label: {
                     Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
                 }
@@ -135,6 +158,16 @@ struct ContentView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: audioViewModel.selectedModule != nil)
         .onAppear { refreshEngineIfNeeded() }
         .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
+        .onChange(of: wrapper.selectedSidebarItem) { oldValue, newValue in
+            if newValue == nil {
+                UITabBar.setAnimationsEnabled(false)
+                wrapper.selectedSidebarItem = oldValue
+                DispatchQueue.main.async{
+                    UITabBar.setAnimationsEnabled(true)
+                    isFABExpanded.toggle()
+                }
+            }
+        }
         .fullScreenCover(isPresented: $expandMiniPlayer) {
             ZStack(alignment: .top) {
                 AudioBibleArtWorkView(viewModel: audioViewModel)
@@ -163,11 +196,11 @@ struct ContentView: View {
     #if os(macOS)
     private var macOSTabView: some View {
         TabView(selection: $wrapper.selectedSidebarItem) {
-            Tab(value: SidebarItem.all, role: .search) {
-                DetailView(selection: .all, viewModel: audioViewModel)
-            } label: {
-                Label("Search", systemImage: "magnifyingglass")
-            }
+//            Tab(value: SidebarItem.all, role: .search) {
+//                DetailView(selection: .all, viewModel: audioViewModel)
+//            } label: {
+//                Label("Search", systemImage: "magnifyingglass")
+//            }
             
             Tab(value: SidebarItem.study) {
                 DetailView(selection: .study, viewModel: audioViewModel)
@@ -228,6 +261,8 @@ struct ContentView: View {
     }
 }
 
+
+
 extension View {
     @ViewBuilder
     func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
@@ -237,4 +272,72 @@ extension View {
             self
         }
     }
+}
+
+extension View {
+    @ViewBuilder
+    func tabOverlay<Content: View>(
+        isPresented: Bool,
+        @ViewBuilder content: @escaping () -> Content,
+        onDismiss: @escaping () -> ()
+    ) -> some View{
+        self.modifier(
+            TabOverlayModifier(
+                isPresented: isPresented,
+                viewContent:  content,
+                onDismiss: onDismiss
+            )
+        )
+    }
+    
+}
+
+
+struct TabOverlayModifier<ViewContent: View>: ViewModifier {
+    var isPresented: Bool
+    @ViewBuilder var viewContent: ViewContent
+    @State private var isViewAppearing = false
+    var onDismiss: () -> ()
+    func body (content: Content)->some  View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay{
+                if isViewAppearing {
+                    GlassEffectContainer{
+                        if isPresented {
+                            Rectangle()
+                                .fill(.black.opacity(0.25))
+                                .containerShape(.rect)
+                                .onTapGesture {
+                                    onDismiss()
+                                }
+                                .ignoresSafeArea()
+                                .transition(.opacity)
+                            
+                        }
+                        
+                        if isPresented {
+                            viewContent
+                                .clipShape(.rect(cornerRadius: 30))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 30))
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 10)
+                        }
+                    }
+                    .allowsHitTesting(isPresented)
+                    .animation(
+                        .interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: 0),
+                        value: isPresented
+                    )
+                }
+            }
+            .onAppear{
+                isViewAppearing = true
+            }
+            .onDisappear{
+                isViewAppearing = false
+            }
+    }
+    
 }

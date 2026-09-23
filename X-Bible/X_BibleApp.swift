@@ -43,22 +43,3 @@ struct X_BibleApp: App {
         .modelContainer(for: PendingInstallation.self)
     }
 }
-
-
-
-struct MobileContentView: View {
-    var body: some View {
-            TabView {
-            Text("Home")
-                .tabItem {
-                    Image(systemName: "house.fill")
-                    Text("Home")
-                }
-                Text("Ho2")
-                .tabItem {
-                    Image(systemName: "magnifyingglass")
-                    Text("Search")
-                }
-        }
-    }
-}

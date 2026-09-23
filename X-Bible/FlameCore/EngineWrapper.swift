@@ -11,14 +11,16 @@ import Combine
 import SwiftUI
 
 class SwordEngineWrapper: ObservableObject {
-    // The actual Rust engine instance
-    // Shared engine instance for the entire app
+    
+    // MARK: - Engine
+    
+    /// Shared Rust engine instance for the entire app
     @Published var engine: XBibleEngine?
     
-    // Persistent task manager to cache catalog and manage background tasks
+    /// Persistent task manager (catalog caching + background work)
     var storeTaskManager = StoreTaskManager()
     
-    // Global serial queue for ALL engine FFI calls to ensure library-level thread safety
+    /// Global serial queue for ALL engine FFI calls (library is not thread-safe)
     let engineQueue = DispatchQueue(label: "com.xbible.engine-queue", qos: .userInitiated)
     
     @Published var isReady = false
@@ -27,71 +29,40 @@ class SwordEngineWrapper: ObservableObject {
     private static let initQueue = DispatchQueue(label: "com.xbible.engine-init")
     private static var isInitializing = false
     
+    /// Bumped whenever the installed module list changes (forces views to refresh)
     @Published var engineVersion = 0
     
-    // Global Navigation & Selection State
-    @Published var selectedSidebarItem: SidebarItem? = .study
-    @Published var selectedModule: String = "KJV"
-    @Published var selectedBook: String = "John"
-    @Published var selectedChapter: Int = 1
+    // MARK: - Global Navigation & Selection State (all optionals)
     
-    // Installed categories for the sidebar
+    @Published var selectedSidebarItem: SidebarItem? = .study
+    @Published var selectedModule: String?          // nil until a module is chosen
+    @Published var selectedBook: String?            // nil until a book is chosen
+    @Published var selectedChapter: Int?            // nil until a chapter is chosen
+    
+    /// Titles of categories that currently have at least one installed module
     @Published var installedModuleCategories: Set<String> = []
     
     private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - Init
     
     init() {
         setupEngine()
         setupNotificationListeners()
     }
     
+    // MARK: - Notifications
+    
     private func setupNotificationListeners() {
         NotificationCenter.default.publisher(for: .installationStateChanged)
-            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main) // Batch multiple updates
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refreshReadingEngine()
             }
             .store(in: &cancellables)
     }
     
-    func refreshReadingEngine() {
-        self.engineQueue.async { [weak self] in
-            guard let self = self, let engine = self.engine else { return }
-            
-            // 1. Refresh the engine's internal module list
-            engine.refreshInstalledModules()
-            
-            // 2. Update active categories
-            var activeTitles = Set<String>()
-            let allModules = engine.getAvailableModules()
-            
-            // Check standard fetchers
-            if !engine.getBibleModules().isEmpty { activeTitles.insert(SidebarItem.bible.title) }
-            if !engine.getCommentaryModules().isEmpty { activeTitles.insert(SidebarItem.commentary.title) }
-            if !engine.getDictionaryModules().isEmpty { activeTitles.insert(SidebarItem.dictionary.title) }
-            if !engine.getLexiconModules().isEmpty { activeTitles.insert(SidebarItem.lexicons.title) }
-            if !engine.getGlossaryModules().isEmpty { activeTitles.insert(SidebarItem.glossary.title) }
-            if !engine.getDailyDevotionalModules().isEmpty { activeTitles.insert(SidebarItem.dailyDevotional.title) }
-            if !engine.getEssayModules().isEmpty { activeTitles.insert(SidebarItem.essays.title) }
-            if !engine.getBookModules().isEmpty { activeTitles.insert(SidebarItem.generalBooks.title) }
-            
-            DispatchQueue.main.async {
-                withAnimation(.spring()) {
-                    self.installedModuleCategories = activeTitles
-                    self.engineVersion += 1
-                }
-            }
-        }
-    }
-    
-    func openModuleInStudy(_ module: SwordModule) {
-        self.selectedModule = module.name
-        self.selectedSidebarItem = .study
-        
-        // Reset to first book if necessary, or keep current? 
-        // For now, let's keep current book/chapter if they exist in the new module
-        // StudyView handles this in updateBooks()
-    }
+    // MARK: - Engine Lifecycle
     
     func setupEngine() {
         SwordEngineWrapper.initQueue.async {
@@ -105,6 +76,9 @@ class SwordEngineWrapper: ObservableObject {
                     self.engine = sharedEngine
                     self.isReady = true
                     SwordEngineWrapper.isInitializing = false
+                    
+                    // First-time default selection (no hard-coded KJV)
+                    self.ensureDefaultSelectionIfNeeded()
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -115,18 +89,120 @@ class SwordEngineWrapper: ObservableObject {
         }
     }
     
+    // MARK: - Module / Book / Chapter Selection
+    
+    /// Ensures we always have a sensible default selection when possible.
+    /// Prefers Bible modules, falls back to any available module.
+    /// Never calls engine methods with nil values.
+    func ensureDefaultSelectionIfNeeded() {
+        guard let engine = self.engine else { return }
+        
+        // Already selected → nothing to do
+        if selectedModule != nil { return }
+        
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Prefer Bible modules, otherwise take the first module of any type
+            let bibleModules = engine.getBibleModules()
+            let candidate = bibleModules.first ?? engine.getAvailableModules().first
+            
+            guard let module = candidate else {
+                // Nothing installed yet
+                DispatchQueue.main.async {
+                    self.selectedModule = nil
+                    self.selectedBook = nil
+                    self.selectedChapter = nil
+                }
+                return
+            }
+            
+            let moduleName = module.name   // non-optional String
+            
+            // Safe call – moduleName is guaranteed non-nil
+            let books = engine.getBooks(moduleName: moduleName)
+            
+            guard let firstBook = books.first else {
+                DispatchQueue.main.async {
+                    self.selectedModule = moduleName
+                    self.selectedBook = nil
+                    self.selectedChapter = nil
+                }
+                return
+            }
+            
+            // firstBook.chapters is already available – take the first chapter number
+            let firstChapterNumber = firstBook.chapters.first.map { Int($0.number) }
+            
+            DispatchQueue.main.async {
+                self.selectedModule = moduleName
+                self.selectedBook = firstBook.name
+                self.selectedChapter = firstChapterNumber ?? 1
+            }
+        }
+    }
+    
+    /// Open a specific module in the Study view
+    func openModuleInStudy(_ module: SwordModule) {
+        selectedModule = module.name
+        selectedSidebarItem = .study
+        
+        // Optionally clear book/chapter so StudyView re-evaluates
+        // selectedBook = nil
+        // selectedChapter = nil
+    }
+    
+    // MARK: - Refresh after install / uninstall
+    
+    func refreshReadingEngine() {
+        engineQueue.async { [weak self] in
+            guard let self = self, let engine = self.engine else { return }
+            
+            // 1. Tell the engine to re-scan installed modules
+            _ = engine.refreshInstalledModules()
+            
+            // 2. Rebuild the set of active sidebar categories
+            var activeTitles = Set<String>()
+            
+            if !engine.getBibleModules().isEmpty            { activeTitles.insert(SidebarItem.bible.title) }
+            if !engine.getCommentaryModules().isEmpty       { activeTitles.insert(SidebarItem.commentary.title) }
+            if !engine.getDictionaryModules().isEmpty       { activeTitles.insert(SidebarItem.dictionary.title) }
+            if !engine.getLexiconModules().isEmpty          { activeTitles.insert(SidebarItem.lexicons.title) }
+            if !engine.getGlossaryModules().isEmpty         { activeTitles.insert(SidebarItem.glossary.title) }
+            if !engine.getDailyDevotionalModules().isEmpty  { activeTitles.insert(SidebarItem.dailyDevotional.title) }
+            if !engine.getEssayModules().isEmpty            { activeTitles.insert(SidebarItem.essays.title) }
+            if !engine.getBookModules().isEmpty             { activeTitles.insert(SidebarItem.generalBooks.title) }
+            
+            DispatchQueue.main.async {
+                withAnimation(.spring()) {
+                    self.installedModuleCategories = activeTitles
+                    self.engineVersion += 1
+                }
+                
+                // After a refresh we may now have modules – pick a default if needed
+                self.ensureDefaultSelectionIfNeeded()
+            }
+        }
+    }
+    
+    // MARK: - Paths
+    
     func getSwordDataPath() -> URL? {
-        // 1. Get the system Application Support directory
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
             return nil
         }
         
-        // 2. Append your specific bundle identifier/folder name
         let swordPath = appSupport.appendingPathComponent("org.flame.xbible")
         
-        // 3. Ensure the folder actually exists before you try to put data there
         do {
-            try FileManager.default.createDirectory(at: swordPath, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(
+                at: swordPath,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
             return swordPath
         } catch {
             print("Error creating directory: \(error)")

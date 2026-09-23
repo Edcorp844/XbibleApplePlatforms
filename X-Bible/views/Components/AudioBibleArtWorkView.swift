@@ -108,7 +108,7 @@ struct AudioBibleArtWorkView: View {
                         .padding(.bottom, 24)
                         
                         // Media Control Transport Strip
-                        MediaControls(viewModel: viewModel)
+                        MediaControls(viewModel: viewModel, inMiniPlayer: false)
                         Spacer()
                     } else {
                         ZStack(alignment: .topLeading, ) {

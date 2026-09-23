@@ -17,7 +17,10 @@ struct DetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom) {
                 if viewModel.selectedModule != nil && selection != .audioBible {
-                    Color.clear.frame(height: 76)
+                    PersistentAudioPlayerBar(viewModel: viewModel)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 20)
                 }
             }
         #else
