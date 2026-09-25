@@ -29,7 +29,7 @@ struct BibleTimelineView: View {
                             // 1. THE TRACKER
                             GeometryReader { scrollGeo in
                                 Color.clear
-                                    .onChange(of: scrollGeo.frame(in: .named(timelineSpace)).minX) { _ in
+                                    .onChange(of: scrollGeo.frame(in: .named(timelineSpace)).minX) { _, _ in
                                         updateYear(scrollGeo, centerX: centerX)
                                     }
                             }

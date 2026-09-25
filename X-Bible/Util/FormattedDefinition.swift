@@ -4,14 +4,7 @@
 //
 //  Created by Zoe Brooklyn on 5/25/26.
 //
-import SwiftUI
 
-//
-//  FormattedDefinition.swift
-//  XBible
-//
-//  Created by Zoe Brooklyn on 5/25/26.
-//
 import SwiftUI
 
 struct FormattedDefinition {
@@ -19,119 +12,159 @@ struct FormattedDefinition {
     let plainText: String
 }
 
-extension View {
-    func parseHTML(_ rawHtml: String, for searchKey: String) -> FormattedDefinition {
-        var text = rawHtml
-        
-        // Remove search key prefix/suffix (case-insensitive) using the passed-in key
+enum DefinitionFormatter {
+
+    /// Produces an AttributedString that closely matches the Android/Kotlin rendering.
+    static func format(html rawHtml: String, searchKey: String) -> FormattedDefinition {
+        var text = rawHtml.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Strip the search key from the beginning / end (case-insensitive)
         let keyLower = searchKey.lowercased()
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.lowercased().hasPrefix(keyLower) {
-            text = String(text.dropFirst(keyLower.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            text = String(text.dropFirst(keyLower.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if text.lowercased().hasSuffix(keyLower) {
-            text = String(text.dropLast(keyLower.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            text = String(text.dropLast(keyLower.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        
-        // Wrap in CSS stylesheet matching the application theme
+
+        // 2. Pre-process exactly like the Kotlin side
+        let processed = preprocess(text)
+
+        // 3. Minimal CSS that the NSAttributedString HTML parser actually understands
         let style = """
         <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-            font-size: 13.5px;
-            line-height: 1.5;
-            color: #1c1c1e;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            font-size: 15px;
+            line-height: 1.45;
         }
-        @media (prefers-color-scheme: dark) {
-            body {
-                color: #f2f2f7;
-            }
-        }
-        .orth {
-            font-weight: bold;
-            font-size: 1.1em;
-            color: #2f8ef4ff;
-        }
-        .pos {
-            font-style: italic;
-            font-weight: bold;
-            color: #8e8e93;
-        }
-        .pron {
-            color: #8e8e93;
-            font-style: normal;
-        }
-        .def {
-            display: inline;
-        }
-        .etym {
-            font-style: italic;
-            color: #48484a;
-        }
-        @media (prefers-color-scheme: dark) {
-            .etym {
-                color: #aeaeb2;
-            }
-        }
-        .oVar {
-            font-style: italic;
-        }
-        .persName {
-            font-style: italic;
-            font-weight: 500;
-        }
-        .quote {
-            font-style: italic;
-            display: inline;
-        }
-        .cit {
-            display: block;
-            margin: 4px 0 4px 12px;
-            border-left: 2px solid rgba(128, 128, 128, 0.3);
-            padding-left: 8px;
-        }
-        .sense {
-            display: block;
-            margin-top: 10px;
-        }
-        .number {
-            font-weight: bold;
-        }
-        .entryFree {
-            display: block;
-            margin-bottom: 8px;
-        }
-        pre, tt {
-            font-family: Menlo, Monaco, Consolas, monospace;
-            font-size: 11.5px;
-            background-color: rgba(128, 128, 128, 0.15);
-            padding: 8px;
-            border-radius: 6px;
-            display: block;
-            white-space: pre-wrap;
-            margin: 8px 0;
-        }
-        a {
-            color: #079af5ff;
-            text-decoration: none;
+        blockquote {
+            margin: 6px 0 6px 12px;
+            padding-left: 10px;
+            border-left: 3px solid #8e8e93;
         }
         </style>
         """
-        
-        let htmlContent = "\(style)<body>\(text)</body>"
-        
-        if let data = htmlContent.data(using: .utf8),
-           let nsAttr = try? NSAttributedString(
-               data: data,
-               options: [
-                   .documentType: NSAttributedString.DocumentType.html,
-                   .characterEncoding: String.Encoding.utf8.rawValue
-               ],
-               documentAttributes: nil
-           ) {
-            return FormattedDefinition(attributedString: AttributedString(nsAttr), plainText: nsAttr.string)
+
+        let fullHTML = "\(style)<body>\(processed)</body>"
+
+        guard let data = fullHTML.data(using: .utf8),
+              let nsAttr = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return FormattedDefinition(
+                attributedString: AttributedString(rawHtml),
+                plainText: rawHtml
+            )
         }
-        
-        return FormattedDefinition(attributedString: AttributedString(rawHtml), plainText: rawHtml)
+
+        // Convert to SwiftUI AttributedString and force the body colour
+        // so it respects the current colour scheme.
+        var result = AttributedString(nsAttr)
+        result.foregroundColor = .primary
+
+        return FormattedDefinition(
+            attributedString: result,
+            plainText: nsAttr.string
+        )
+    }
+
+    // MARK: - Pre-processing (mirrors the Kotlin logic)
+
+    private static func preprocess(_ html: String) -> String {
+        var t = html
+
+        // orth → bold + accent colour (inline style the parser understands)
+        t = t.replacingOccurrences(
+            of: #"class="orth""#,
+            with: #"style="font-weight:bold; font-size:1.1em; color:#007AFF""#,
+            options: .regularExpression
+        )
+
+        // pos → italic + secondary colour
+        t = t.replacingOccurrences(
+            of: #"class="pos""#,
+            with: #"style="font-style:italic; font-weight:600; color:#8E8E93""#,
+            options: .regularExpression
+        )
+
+        // pron
+        t = t.replacingOccurrences(
+            of: #"class="pron""#,
+            with: #"style="color:#8E8E93""#,
+            options: .regularExpression
+        )
+
+        // etym
+        t = t.replacingOccurrences(
+            of: #"class="etym""#,
+            with: #"style="font-style:italic; color:#636366""#,
+            options: .regularExpression
+        )
+
+        // oVar / persName / quote → italic
+        t = t.replacingOccurrences(
+            of: #"class="(oVar|persName|quote)""#,
+            with: #"style="font-style:italic""#,
+            options: .regularExpression
+        )
+
+        // number → bold
+        t = t.replacingOccurrences(
+            of: #"class="number""#,
+            with: #"style="font-weight:bold""#,
+            options: .regularExpression
+        )
+
+        // Convert citation blocks into real <blockquote>
+        // (this is what gives the left stripe + indentation)
+        t = t.replacingOccurrences(
+            of: #"<div class="cit">"#,
+            with: "<blockquote>",
+            options: .caseInsensitive
+        )
+        // Only close the ones we opened (simple heuristic)
+        t = t.replacingOccurrences(
+            of: #"</div>"#,
+            with: "</blockquote>",
+            options: .caseInsensitive
+        )
+
+        // Clean any remaining class="cit"
+        t = t.replacingOccurrences(
+            of: #"class="cit""#,
+            with: "",
+            options: .regularExpression
+        )
+
+        // sense / entryFree → block with a little spacing
+        t = t.replacingOccurrences(
+            of: #"class="sense""#,
+            with: #"style="display:block; margin-top:10px""#,
+            options: .regularExpression
+        )
+        t = t.replacingOccurrences(
+            of: #"class="entryFree""#,
+            with: #"style="display:block; margin-bottom:8px""#,
+            options: .regularExpression
+        )
+
+        return t
+    }
+}
+
+// MARK: - Convenience for views
+
+extension View {
+    /// Drop-in replacement for the old parseHTML helper.
+    func parseHTML(_ rawHtml: String, for searchKey: String) -> FormattedDefinition {
+        DefinitionFormatter.format(html: rawHtml, searchKey: searchKey)
     }
 }

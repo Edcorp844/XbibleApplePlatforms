@@ -20,7 +20,6 @@ class LibraryViewModel: ObservableObject {
     }
     
     func loadInstalledModules(wrapper: SwordEngineWrapper, category: SidebarItem? = nil) {
-        guard let engine = wrapper.engine else { return }
         
         DispatchQueue.main.async {
             self.isLoading = true

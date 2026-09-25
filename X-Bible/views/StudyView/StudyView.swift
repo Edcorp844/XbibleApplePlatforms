@@ -15,37 +15,36 @@ import Combine
 import AppKit
 #endif
 
-
 // MARK: - Main View
 struct StudyView: View {
     @EnvironmentObject var wrapper: SwordEngineWrapper
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-        
+
     @StateObject private var viewModel = StudyViewModel()
-    
-    // Custom Sidebar Overlay Toggles
+
+    // Custom Sidebar Overlay Toggles (iOS only)
     @State private var showModulePicker = false
     @State private var showBookPicker = false
     @State private var showChapterPicker = false
     @State private var activePickerTab: Int = 0 // 0 = Books, 1 = Chapters
     @State private var statusMessage = "Ready"
-    
+
     // iOS Tabs Gallery Sheet Presenter
     @State private var isShowingTabsGallery = false
-    
+
     // Toolbar Menus
     @State private var showTweaksPopover = false
     @State private var showMorePopover = false
-    
-    //text config
+
+    // Text config
     @Query private var textConfigs: [TextConfig]
-    
+
     @Namespace private var tabNamespace
-    
+
     // MARK: - Helpers
-    
+
     private var activeTabBinding: Binding<TabInstance>? {
         guard let index = viewModel.activeTabIndex else { return nil }
         return Binding(
@@ -53,7 +52,7 @@ struct StudyView: View {
             set: { viewModel.tabs[index] = $0 }
         )
     }
-    
+
     private var osIsMac: Bool {
         #if os(macOS)
         return true
@@ -61,7 +60,7 @@ struct StudyView: View {
         return false
         #endif
     }
-    
+
     private var useSidebarOverlay: Bool {
         #if os(iOS)
         return UIDevice.current.userInterfaceIdiom == .pad || verticalSizeClass == .compact
@@ -69,26 +68,36 @@ struct StudyView: View {
         return false
         #endif
     }
-    
-    // Safe defaults that bridge the optional wrapper values
+
+    /// Binding into a specific tab by value, safe against the tab being removed mid-frame.
+    private func binding(for tab: TabInstance) -> Binding<TabInstance> {
+        guard let idx = viewModel.tabs.firstIndex(where: { $0.id == tab.id }) else {
+            return .constant(tab)
+        }
+        return Binding(
+            get: { viewModel.tabs[idx] },
+            set: { viewModel.tabs[idx] = $0 }
+        )
+    }
+
     private var safeDefaultModule: String {
         if let module = wrapper.selectedModule, !module.isEmpty {
             return module
         }
         return viewModel.availableModules.first?.name ?? ""
     }
-    
+
     private var safeDefaultBook: String {
         if let book = wrapper.selectedBook, !book.isEmpty {
             return book
         }
         return viewModel.availableBooks.first?.name ?? ""
     }
-    
+
     private var safeDefaultChapter: Int {
         wrapper.selectedChapter ?? 1
     }
-    
+
     private var currentConfig: TextConfig {
         if let existing = textConfigs.first {
             return existing
@@ -99,22 +108,22 @@ struct StudyView: View {
             return newConfig
         }
     }
-    
+
     init() { }
-    
+
     // MARK: - Body
-    
+
     var body: some View {
         ZStack {
             if let activeBinding = activeTabBinding {
                 ZStack {
                     HStack(spacing: 0) {
                         studyReaderPane(for: activeBinding)
-                        
+
 #if os(macOS)
                         if activeBinding.wrappedValue.isSplitViewPresented {
                             SplitDivider(detailWidth: activeBinding.detailWidth)
-                            
+
                             SplitDetailPane(
                                 isPresented: activeBinding.isSplitViewPresented,
                                 selectedTab: activeBinding.selectedTab,
@@ -140,7 +149,7 @@ struct StudyView: View {
                         }
 #endif
                     }
-                    
+
                     // iOS Custom Drawer Overlays
 #if os(iOS)
                     if useSidebarOverlay && (showBookPicker || showModulePicker) {
@@ -153,7 +162,7 @@ struct StudyView: View {
                                     showModulePicker = false
                                 }
                             }
-                        
+
                         HStack(spacing: 0) {
                             Spacer()
                             VStack(spacing: 0) {
@@ -166,7 +175,7 @@ struct StudyView: View {
                                         .pickerStyle(.segmented)
                                         .padding(.horizontal, 16)
                                         .padding(.top, 12)
-                                        
+
                                         if activePickerTab == 0 {
                                             bookPickerContent(for: activeBinding)
                                         } else {
@@ -225,166 +234,10 @@ struct StudyView: View {
             }
         }
 #if os(macOS)
-        .toolbar {
-            if let activeBinding = activeTabBinding {
-                
-                ToolbarItemGroup(placement: .secondaryAction) {
-                    PopoverButton(
-                        label: activeBinding.wrappedValue.selectedModule.isEmpty
-                            ? "Select Module"
-                            : activeBinding.wrappedValue.selectedModule,
-                        title: "Bible Versions",
-                        isPresented: $showModulePicker,
-                        bypassPopover: false
-                    ) {
-                        modulePickerContent(for: activeBinding)
-                    }
-                    
-                    PopoverButton(
-                        label: activeBinding.wrappedValue.selectedBook.isEmpty
-                            ? "Select Book"
-                            : activeBinding.wrappedValue.selectedBook,
-                        title: "Select Book",
-                        isPresented: $showBookPicker,
-                        bypassPopover: false
-                    ) {
-                        bookPickerContent(for: activeBinding)
-                    }
-                    
-                    PopoverButton(
-                        label: "\(activeBinding.wrappedValue.selectedChapter)",
-                        title: "Chapter",
-                        isPresented: $showChapterPicker,
-                        bypassPopover: false
-                    ) {
-                        chapterPickerContent(for: activeBinding)
-                    }
-                }
-                
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        showTweaksPopover.toggle()
-                    } label: {
-                        Image(systemName: "textformat")
-                    }
-                    .help("Tweaks & Settings")
-                    .popover(isPresented: $showTweaksPopover, arrowEdge: .bottom) {
-                        FontSettingsContent()
-                    }
-                    
-                    Button {
-                        showMorePopover.toggle()
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .help("More")
-                    .popover(isPresented: $showMorePopover, arrowEdge: .bottom) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Button("Duplicate Current Tab") {
-                                showMorePopover = false
-                                duplicateCurrentTab()
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Divider()
-                            
-                            Button("Export Passage...") {
-                                showMorePopover = false
-                                // TODO: Add export action
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(12)
-                        .frame(width: 180)
-                    }
-                }
-                
-                ToolbarSpacer(.fixed)
-                
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        // search action
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .help("Search")
-                }
-                
-                ToolbarItem(placement: .accessoryBar(id: "tab-items")) {
-                    macOSWindowTabsView()
-                }
-                
-                ToolbarItem(placement: .accessoryBar(id: "tab-items")) {
-                    Button(action: createNewTab) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 22, height: 22)
-                            .background(Color.primary.opacity(0.05))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open New Tab")
-                }
-            }
-        }
+        .toolbar { macOSToolbar }
 #endif
-        .onAppear {
-            initializeData()
-        }
 #if os(iOS)
-        .toolbar {
-            if let activeBinding = activeTabBinding {
-                ToolbarItem(placement: .topBarLeading) {
-                    PopoverButton(
-                        label: activeBinding.wrappedValue.selectedBook.isEmpty
-                            ? "Select Passage"
-                            : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
-                        title: "Select Passage",
-                        isPresented: $showBookPicker,
-                        bypassPopover: useSidebarOverlay
-                    ) {
-                        VStack(spacing: 16) {
-                            Picker("Selection Mode", selection: $activePickerTab) {
-                                Text("Books").tag(0)
-                                Text("Chapters").tag(1)
-                            }
-                            .pickerStyle(.segmented)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                            
-                            if activePickerTab == 0 {
-                                bookPickerContent(for: activeBinding)
-                            } else {
-                                chapterPickerContent(for: activeBinding)
-                            }
-                        }
-                    }
-                }
-                
-                ToolbarSpacer(.flexible, placement: .topBarLeading)
-                
-                ToolbarItem(placement: .topBarLeading) {
-                    PopoverButton(
-                        label: activeBinding.wrappedValue.selectedModule.isEmpty
-                            ? "Select Module"
-                            : activeBinding.wrappedValue.selectedModule,
-                        title: "Bible Versions",
-                        isPresented: $showModulePicker,
-                        bypassPopover: useSidebarOverlay
-                    ) {
-                        modulePickerContent(for: activeBinding)
-                    }
-                }
-                
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button(action: { isShowingTabsGallery = true }) {
-                        Image(systemName: "square.on.square")
-                    }
-                    .badge(viewModel.tabs.count)
-                }
-            }
-        }
+        .toolbar { iOSPrimaryToolbar }
         .sheet(isPresented: $isShowingTabsGallery) {
             TabsGalleryView(
                 tabs: $viewModel.tabs,
@@ -395,64 +248,187 @@ struct StudyView: View {
             )
         }
 #endif
-        .backgroundStyle(.clear)
+        .onAppear { initializeData() }
         .onChange(of: wrapper.engineVersion) { _, _ in initializeData() }
         .onReceive(NotificationCenter.default.publisher(for: .requestTabDuplication)) { _ in
             self.duplicateCurrentTab()
         }
     }
 
-    // MARK: - Tab Actions
-    
-    private func createNewTab() {
-        let module = safeDefaultModule
-        let book = safeDefaultBook
-        let chapter = safeDefaultChapter
-        
-        let newTab = TabInstance(
-            selectedModule: module,
-            selectedBook: book,
-            selectedChapter: chapter
-        )
-        
-        viewModel.tabs.append(newTab)
-        viewModel.selectedTabId = newTab.id
-        
-        if !module.isEmpty {
-            updateBooks()
+    // MARK: - macOS Toolbar
+
+#if os(macOS)
+    @ToolbarContentBuilder
+    private var macOSToolbar: some ToolbarContent {
+        if let activeBinding = activeTabBinding {
+            ToolbarItemGroup(placement: .secondaryAction) {
+                PopoverButton(
+                    label: activeBinding.wrappedValue.selectedModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedModule,
+                    title: "Bible Versions",
+                    isPresented: $showModulePicker,
+                    bypassPopover: false
+                ) {
+                    modulePickerContent(for: activeBinding)
+                }
+
+                PopoverButton(
+                    label: activeBinding.wrappedValue.selectedBook.isEmpty
+                        ? "Select Book"
+                        : activeBinding.wrappedValue.selectedBook,
+                    title: "Select Book",
+                    isPresented: $showBookPicker,
+                    bypassPopover: false
+                ) {
+                    bookPickerContent(for: activeBinding)
+                }
+
+                PopoverButton(
+                    label: "\(activeBinding.wrappedValue.selectedChapter)",
+                    title: "Chapter",
+                    isPresented: $showChapterPicker,
+                    bypassPopover: false
+                ) {
+                    chapterPickerContent(for: activeBinding)
+                }
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showTweaksPopover.toggle()
+                } label: {
+                    Image(systemName: "textformat")
+                }
+                .help("Tweaks & Settings")
+                .popover(isPresented: $showTweaksPopover, arrowEdge: .bottom) {
+                    FontSettingsContent()
+                }
+
+                Button {
+                    showMorePopover.toggle()
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .help("More")
+                .popover(isPresented: $showMorePopover, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button("Duplicate Current Tab") {
+                            showMorePopover = false
+                            duplicateCurrentTab()
+                        }
+                        .buttonStyle(.plain)
+
+                        Divider()
+
+                        Button("Export Passage...") {
+                            showMorePopover = false
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .frame(width: 180)
+                }
+            }
+
+            ToolbarSpacer(.fixed)
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    // search action
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .help("Search")
+            }
+
+            // The tab strip lives in the accessoryBar slot — this is exactly
+            // where macOS centers the Xcode-style tab pill natively.
+            ToolbarItem(placement: .accessoryBar(id: "tab-items")) {
+                macOSWindowTabsView()
+            }
+
+            ToolbarItem(placement: .accessoryBar(id: "tab-items")) {
+                Button(action: createNewTab) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.glass)
+                .background(Color.primary)
+                .clipShape(Circle())
+                .help("Open New Tab")
+            }
         }
     }
-    
-    private func duplicateCurrentTab() {
-        guard let index = viewModel.activeTabIndex else {
-            createNewTab()
-            return
+#endif
+
+    // MARK: - iOS Primary Toolbar
+
+#if os(iOS)
+    @ToolbarContentBuilder
+    private var iOSPrimaryToolbar: some ToolbarContent {
+        if let activeBinding = activeTabBinding {
+            ToolbarItem(placement: .topBarLeading) {
+                PopoverButton(
+                    label: activeBinding.wrappedValue.selectedBook.isEmpty
+                        ? "Select Passage"
+                        : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
+                    title: "Select Passage",
+                    isPresented: $showBookPicker,
+                    bypassPopover: useSidebarOverlay
+                ) {
+                    VStack(spacing: 16) {
+                        Picker("Selection Mode", selection: $activePickerTab) {
+                            Text("Books").tag(0)
+                            Text("Chapters").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+
+                        if activePickerTab == 0 {
+                            bookPickerContent(for: activeBinding)
+                        } else {
+                            chapterPickerContent(for: activeBinding)
+                        }
+                    }
+                }
+            }
+
+            ToolbarSpacer(.flexible, placement: .topBarLeading)
+
+            ToolbarItem(placement: .topBarLeading) {
+                PopoverButton(
+                    label: activeBinding.wrappedValue.selectedModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedModule,
+                    title: "Bible Versions",
+                    isPresented: $showModulePicker,
+                    bypassPopover: useSidebarOverlay
+                ) {
+                    modulePickerContent(for: activeBinding)
+                }
+            }
+
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button(action: createNewTab) {
+                    Image(systemName: "plus")
+                }
+
+                Button(action: { isShowingTabsGallery = true }) {
+                    Image(systemName: "square.on.square")
+                }
+                .badge(viewModel.tabs.count)
+            }
         }
-        
-        let source = viewModel.tabs[index]
-        let duplicated = TabInstance(
-            selectedModule: source.selectedModule,
-            selectedBook: source.selectedBook,
-            selectedChapter: source.selectedChapter
-        )
-        
-        viewModel.tabs.append(duplicated)
-        viewModel.selectedTabId = duplicated.id
-        loadContent()
     }
-    
-    private func closeTab(id: UUID) {
-        guard let index = viewModel.tabs.firstIndex(where: { $0.id == id }) else { return }
-        viewModel.tabs.remove(at: index)
-        
-        if viewModel.selectedTabId == id {
-            viewModel.selectedTabId = viewModel.tabs.last?.id
-            loadContent()
-        }
-    }
-    
-    // MARK: - Subviews
-    
+#endif
+
+    // MARK: - macOS Custom Tabs (native-feel pill in accessoryBar)
+
+#if os(macOS)
     @ViewBuilder
     private func macOSWindowTabsView() -> some View {
         if !viewModel.tabs.isEmpty {
@@ -461,10 +437,10 @@ struct StudyView: View {
                     HStack(spacing: 4) {
                         ForEach(Array(viewModel.tabs.enumerated()), id: \.element.id) { index, tab in
                             macOSIndividualTabItem(for: tab)
-                            
+
                             if index < viewModel.tabs.count - 1 {
                                 Divider()
-                                    .frame(height: 20)
+                                    .frame(height: 12)
                                     .foregroundColor(.secondary.opacity(0.3))
                             }
                         }
@@ -473,7 +449,7 @@ struct StudyView: View {
                     .padding(.horizontal, 2)
                 }
             }
-            .frame(height: 26)
+            .frame(height: 25)
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
             .background(Capsule().fill(.regularMaterial))
@@ -485,19 +461,19 @@ struct StudyView: View {
     @ViewBuilder
     private func macOSIndividualTabItem(for tab: TabInstance) -> some View {
         let isSelected = viewModel.selectedTabId == tab.id
-        
+
         HStack(spacing: 6) {
             Image(systemName: tab.selectedBook.isEmpty ? "doc.plaintext" : "book.closed.fill")
                 .font(.system(size: 11))
                 .foregroundColor(isSelected ? .accentColor : .secondary)
-            
+
             Text(tab.selectedBook.isEmpty
                  ? "Empty Tab"
                  : "\(tab.selectedBook) \(tab.selectedChapter)")
                 .font(.system(size: 12, weight: isSelected ? .medium : .regular))
                 .foregroundColor(isSelected ? .primary : .primary.opacity(0.8))
                 .lineLimit(1)
-            
+
             if !tab.selectedModule.isEmpty {
                 Text(tab.selectedModule)
                     .font(.system(size: 9, weight: .bold))
@@ -507,9 +483,9 @@ struct StudyView: View {
                     .cornerRadius(3)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer(minLength: 4)
-            
+
             Button(action: { closeTab(id: tab.id) }) {
                 Image(systemName: "xmark")
                     .font(.system(size: 7, weight: .black))
@@ -522,7 +498,7 @@ struct StudyView: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 6)
-        .frame(height: 26)
+        .frame(height: 25)
         .frame(minWidth: 120)
         .frame(maxWidth: .infinity)
         .background {
@@ -536,13 +512,90 @@ struct StudyView: View {
             viewModel.selectedTabId = tab.id
             loadContent()
         }
+        .contextMenu {
+            Button("Duplicate Tab") { duplicateTab(id: tab.id) }
+            Button("Close Tab", role: .destructive) { closeTab(id: tab.id) }
+            Divider()
+            Button("Close Other Tabs") { closeOtherTabs(keeping: tab.id) }
+            Button("Close All Tabs", role: .destructive) { closeAllTabs() }
+        }
     }
-    
+#endif
+
+    // MARK: - Tab Actions
+
+    private func createNewTab() {
+        let module = safeDefaultModule
+        let book = safeDefaultBook
+        let chapter = safeDefaultChapter
+
+        let newTab = TabInstance(
+            selectedModule: module,
+            selectedBook: book,
+            selectedChapter: chapter
+        )
+
+        viewModel.tabs.append(newTab)
+        viewModel.selectedTabId = newTab.id
+
+        if !module.isEmpty {
+            updateBooks()
+        }
+    }
+
+    private func duplicateCurrentTab() {
+        guard let index = viewModel.activeTabIndex else {
+            createNewTab()
+            return
+        }
+        duplicateTab(id: viewModel.tabs[index].id)
+    }
+
+    private func duplicateTab(id: UUID) {
+        guard let source = viewModel.tabs.first(where: { $0.id == id }) else { return }
+        let duplicated = TabInstance(
+            selectedModule: source.selectedModule,
+            selectedBook: source.selectedBook,
+            selectedChapter: source.selectedChapter
+        )
+        viewModel.tabs.append(duplicated)
+        viewModel.selectedTabId = duplicated.id
+        loadContent()
+    }
+
+    private func closeTab(id: UUID) {
+        guard let index = viewModel.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = viewModel.selectedTabId == id
+        viewModel.tabs.remove(at: index)
+
+        if wasSelected {
+            if viewModel.tabs.indices.contains(index) {
+                viewModel.selectedTabId = viewModel.tabs[index].id
+            } else {
+                viewModel.selectedTabId = viewModel.tabs.last?.id
+            }
+            loadContent()
+        }
+    }
+
+    private func closeOtherTabs(keeping id: UUID) {
+        viewModel.tabs = viewModel.tabs.filter { $0.id == id }
+        viewModel.selectedTabId = id
+        loadContent()
+    }
+
+    private func closeAllTabs() {
+        viewModel.tabs.removeAll()
+        viewModel.selectedTabId = nil
+    }
+
+    // MARK: - Reader Pane
+
     @ViewBuilder
     private func studyReaderPane(for tab: Binding<TabInstance>) -> some View {
         GeometryReader { geometry in
             let isMobile = geometry.size.width < 500
-            
+
             ZStack {
                 ScrollView {
                     HStack {
@@ -559,7 +612,7 @@ struct StudyView: View {
                     }
                     .padding()
                 }
-                
+
                 HStack(alignment: .bottom) {
                     NavigationRectButton(
                         icon: "chevron.left",
@@ -580,11 +633,11 @@ struct StudyView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     @ViewBuilder
     private func sectionView(_ section: ModuleSection) -> some View {
         let alignment: HorizontalAlignment = section.textDirection == .rtl ? .trailing : .leading
-        
+
         VStack(alignment: alignment, spacing: 20) {
             if !section.title.isEmpty {
                 FlowLayout(spacing: 8) {
@@ -594,34 +647,35 @@ struct StudyView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            
+
             ForEach(section.verses, id: \.osisId) { verse in
-                verseView(verse)
+                verseView(verse, direction: section.textDirection)
             }
         }
     }
-    
-    private func verseView(_ verse: XbibleEngine.Verse) -> some View {
+
+    private func verseView(_ verse: XbibleEngine.Verse, direction: XbibleEngine.TextDirection) -> some View {
         VerseView(
             verse: verse,
+            direction: direction,
             onWordTextClicked: { word in lookupWord(word) },
             onStrongsClicked: { strongs in lookupStrongs(strongs) }
         )
     }
-    
+
     private func wordView(for section: ModuleSection, at index: Int) -> some View {
         let currentWord = section.title[index]
         return WordView(word: currentWord, onWordTextClicked: { self.lookupWord(currentWord) })
     }
-    
+
     // MARK: - Pickers
-    
+
     @ViewBuilder
     private func chapterPickerContent(for tab: Binding<TabInstance>) -> some View {
         let chapters = viewModel.availableBooks.first(where: { $0.name == tab.wrappedValue.selectedBook })?.chapters ?? []
         let total = max(1, chapters.count)
         let columnsCount = useSidebarOverlay ? 4 : (horizontalSizeClass == .compact && !osIsMac ? 8 : 5)
-        
+
         VStack(alignment: .leading, spacing: 12) {
             if osIsMac {
                 Text("Chapters")
@@ -629,7 +683,7 @@ struct StudyView: View {
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 4)
             }
-            
+
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: columnsCount), spacing: 10) {
                     ForEach(1...total, id: \.self) { ch in
@@ -648,7 +702,7 @@ struct StudyView: View {
         .frame(maxWidth: .infinity)
         #endif
     }
-    
+
     @ViewBuilder
     private func modulePickerContent(for tab: Binding<TabInstance>) -> some View {
         VStack {
@@ -681,7 +735,7 @@ struct StudyView: View {
         .padding(.vertical, 8)
         #endif
     }
-    
+
     @ViewBuilder
     private func bookPickerContent(for tab: Binding<TabInstance>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -691,7 +745,7 @@ struct StudyView: View {
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 4)
             }
-            
+
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 10) {
                     ForEach(viewModel.availableBooks, id: \.name) { book in
@@ -721,7 +775,7 @@ struct StudyView: View {
         .frame(maxWidth: .infinity)
         #endif
     }
-    
+
     private func chapterCell(for ch: Int, tab: Binding<TabInstance>) -> some View {
         Button(action: {
             if let index = viewModel.activeTabIndex {
@@ -745,7 +799,7 @@ struct StudyView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private func selectionRow(_ text: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text)
@@ -759,7 +813,7 @@ struct StudyView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private func moduleSelectionRow(_ version: String, language: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .center, spacing: 2) {
@@ -778,22 +832,22 @@ struct StudyView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     // MARK: - Engine Integration
-    
+
     private func initializeData() {
         guard let engine = wrapper.engine else { return }
-        
+
         wrapper.engineQueue.async {
             let modules = engine.getBibleModules()
             let lexicons = engine.getLexiconModules()
             let commentaries = engine.getCommentaryModules()
-            
+
             DispatchQueue.main.async {
                 self.viewModel.availableModules = modules
                 self.viewModel.availableLexicons = lexicons
                 self.viewModel.availableCommentaries = commentaries
-                
+
                 if self.viewModel.tabs.isEmpty {
                     self.createNewTab()
                 } else {
@@ -802,105 +856,105 @@ struct StudyView: View {
             }
         }
     }
-    
+
     private func updateBooks() {
         guard let engine = wrapper.engine,
               let tabId = viewModel.selectedTabId,
               let index = viewModel.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        
+
         var currentModule = viewModel.tabs[index].selectedModule
         if currentModule.isEmpty {
             currentModule = viewModel.availableModules.first?.name ?? ""
         }
-        
+
         guard !currentModule.isEmpty else {
             viewModel.availableBooks = []
             return
         }
-        
+
         let capturedTabId = tabId
-        
+
         wrapper.engineQueue.async {
             let books = engine.getBooks(moduleName: currentModule)
-            
+
             DispatchQueue.main.async {
                 self.viewModel.availableBooks = books
-                
+
                 guard let idx = self.viewModel.tabs.firstIndex(where: { $0.id == capturedTabId }) else { return }
-                
+
                 if self.viewModel.tabs[idx].selectedModule.isEmpty {
                     self.viewModel.tabs[idx].selectedModule = currentModule
                 }
-                
+
                 if !books.contains(where: { $0.name == self.viewModel.tabs[idx].selectedBook }) {
                     self.viewModel.tabs[idx].selectedBook = books.first?.name ?? ""
                     self.viewModel.tabs[idx].selectedChapter = 1
                 }
-                
+
                 self.loadContent()
             }
         }
     }
-    
+
     private func loadContent() {
         guard let engine = wrapper.engine,
               let tabId = viewModel.selectedTabId,
               let index = viewModel.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        
+
         let tab = viewModel.tabs[index]
-        
+
         guard !tab.selectedBook.isEmpty else {
             if let idx = viewModel.tabs.firstIndex(where: { $0.id == tabId }) {
                 viewModel.tabs[idx].sections = []
             }
             return
         }
-        
+
         var currentModule = tab.selectedModule
         if currentModule.isEmpty {
             currentModule = viewModel.availableModules.first?.name ?? ""
         }
-        
+
         guard !currentModule.isEmpty else { return }
-        
+
         let ref = "\(tab.selectedBook) \(tab.selectedChapter)"
         let capturedTabId = tabId
-        
+
         wrapper.engineQueue.async {
             let results = engine.getChapterContent(moduleName: currentModule, reference: ref)
-            
+
             DispatchQueue.main.async {
                 guard let idx = self.viewModel.tabs.firstIndex(where: { $0.id == capturedTabId }) else { return }
                 var updatedTab = self.viewModel.tabs[idx]
                 updatedTab.sections = results
                 self.viewModel.tabs[idx] = updatedTab
-                
+
                 self.loadCommentaryContent()
             }
         }
     }
-    
+
     // MARK: - Lookups
-    
+
     private func lookupWord(_ word: XbibleEngine.Word) {
         let cleanWord = word.text.trimmingCharacters(in: .punctuationCharacters)
         guard !cleanWord.isEmpty, let index = viewModel.activeTabIndex else { return }
-        
+
         viewModel.tabs[index].selectedWordForLookup = cleanWord
         viewModel.tabs[index].selectedTab = .dictionary
-        
+
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             viewModel.tabs[index].isSplitViewPresented = true
         }
         viewModel.tabs[index].isDictionaryLoading = true
-        
+
         let query = DictionaryQuery(word: cleanWord, strongs: [], language: word.language)
         let capturedTabId = viewModel.tabs[index].id
-        
+
         wrapper.engineQueue.async {
             guard let engine = self.wrapper.engine else { return }
             let response = engine.lookupDictionary(query: query)
-            
+
             DispatchQueue.main.async {
                 guard let idx = self.viewModel.tabs.firstIndex(where: { $0.id == capturedTabId }) else { return }
                 var updatedTab = self.viewModel.tabs[idx]
@@ -910,32 +964,32 @@ struct StudyView: View {
             }
         }
     }
-    
+
     private func lookupStrongs(_ strongsCode: String) {
         guard !strongsCode.isEmpty, let index = viewModel.activeTabIndex else { return }
-        
+
         viewModel.tabs[index].selectedStrongsForLookup = strongsCode
         viewModel.tabs[index].selectedTab = .lexicon
-        
+
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             viewModel.tabs[index].isSplitViewPresented = true
         }
-        
+
         if viewModel.availableLexicons.isEmpty {
             loadLexiconsMetadata { self.loadLexiconContent() }
         } else {
             loadLexiconContent()
         }
     }
-    
+
     private func loadLexiconsMetadata(completion: (() -> Void)? = nil) {
         wrapper.engineQueue.async {
             guard let engine = self.wrapper.engine else { return }
             let lexicons = engine.getLexiconModules()
-            
+
             DispatchQueue.main.async {
                 self.viewModel.availableLexicons = lexicons
-                
+
                 if let index = self.viewModel.activeTabIndex {
                     let current = self.viewModel.tabs[index].selectedLexiconModule
                     if current.isEmpty || !lexicons.contains(where: { $0.name == current }) {
@@ -946,28 +1000,28 @@ struct StudyView: View {
             }
         }
     }
-    
+
     private func loadLexiconContent() {
         guard let index = viewModel.activeTabIndex else { return }
         let tab = viewModel.tabs[index]
-        
+
         guard !tab.selectedStrongsForLookup.isEmpty else {
             viewModel.tabs[index].lexiconResults = []
             return
         }
-        
+
         viewModel.tabs[index].isLexiconLoading = true
-        
+
         let reference = tab.selectedStrongsForLookup
         let currentModule = tab.selectedLexiconModule
         let targetLanguage = viewModel.availableLexicons.first(where: { $0.name == currentModule })?.language ?? "en"
         let capturedTabId = tab.id
-        
+
         wrapper.engineQueue.async {
             guard let engine = self.wrapper.engine else { return }
             let query = LexiconQuery(strongsNumber: reference, language: targetLanguage)
             let response = engine.lookupStrongsNumber(query: query)
-            
+
             DispatchQueue.main.async {
                 guard let idx = self.viewModel.tabs.firstIndex(where: { $0.id == capturedTabId }) else { return }
                 var updatedTab = self.viewModel.tabs[idx]
@@ -977,27 +1031,27 @@ struct StudyView: View {
             }
         }
     }
-    
+
     private func loadCommentaryContent() {
         guard let index = viewModel.activeTabIndex else { return }
         let tab = viewModel.tabs[index]
-        
+
         guard !tab.selectedCommentaryModule.isEmpty else {
             viewModel.tabs[index].commentaryResults = []
             return
         }
-        
+
         viewModel.tabs[index].isCommentaryLoading = true
-        
+
         let moduleName = tab.selectedCommentaryModule
         let reference = "\(tab.selectedBook) \(tab.selectedChapter)"
         viewModel.tabs[index].currentCommentaryReference = reference
         let capturedTabId = tab.id
-        
+
         wrapper.engineQueue.async {
             guard let engine = self.wrapper.engine else { return }
             let results = engine.getChapterContent(moduleName: moduleName, reference: reference)
-            
+
             DispatchQueue.main.async {
                 guard let idx = self.viewModel.tabs.firstIndex(where: { $0.id == capturedTabId }) else { return }
                 var updatedTab = self.viewModel.tabs[idx]
@@ -1007,9 +1061,9 @@ struct StudyView: View {
             }
         }
     }
-    
+
     // MARK: - Chapter Navigation
-    
+
     private func canGoToPrevious() -> Bool {
         guard let index = viewModel.activeTabIndex,
               let bookIndex = viewModel.availableBooks.firstIndex(where: { $0.name == viewModel.tabs[index].selectedBook }) else {
@@ -1017,7 +1071,7 @@ struct StudyView: View {
         }
         return viewModel.tabs[index].selectedChapter > 1 || bookIndex > 0
     }
-    
+
     private func canGoToNext() -> Bool {
         guard let index = viewModel.activeTabIndex,
               let bookIndex = viewModel.availableBooks.firstIndex(where: { $0.name == viewModel.tabs[index].selectedBook }) else {
@@ -1026,13 +1080,13 @@ struct StudyView: View {
         let chapters = viewModel.availableBooks[bookIndex].chapters
         return viewModel.tabs[index].selectedChapter < chapters.count || bookIndex < viewModel.availableBooks.count - 1
     }
-    
+
     private func goToPreviousChapter() {
         guard let index = viewModel.activeTabIndex,
               let bookIndex = viewModel.availableBooks.firstIndex(where: { $0.name == viewModel.tabs[index].selectedBook }) else {
             return
         }
-        
+
         if viewModel.tabs[index].selectedChapter > 1 {
             viewModel.tabs[index].selectedChapter -= 1
         } else if bookIndex > 0 {
@@ -1042,15 +1096,15 @@ struct StudyView: View {
         }
         loadContent()
     }
-    
+
     private func goToNextChapter() {
         guard let index = viewModel.activeTabIndex,
               let bookIndex = viewModel.availableBooks.firstIndex(where: { $0.name == viewModel.tabs[index].selectedBook }) else {
             return
         }
-        
+
         let chapters = viewModel.availableBooks[bookIndex].chapters
-        
+
         if viewModel.tabs[index].selectedChapter < chapters.count {
             viewModel.tabs[index].selectedChapter += 1
         } else if bookIndex < viewModel.availableBooks.count - 1 {
@@ -1061,4 +1115,3 @@ struct StudyView: View {
         loadContent()
     }
 }
-

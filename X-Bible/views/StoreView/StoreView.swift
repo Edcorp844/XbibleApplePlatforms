@@ -1,3 +1,10 @@
+//
+//  StoreView.swift
+//  XBible
+//
+//  Created by Zoe Brooklyn on 5/23/26.
+//
+
 import SwiftUI
 import XbibleEngine
 import SwiftData
@@ -12,116 +19,251 @@ struct StoreView: View {
     // MARK: - State
 
     @StateObject private var viewModel = StoreViewModel()
-    @State private var selectedCategory: String = "Biblical Texts"
+    @State private var selectedCategory: String = "All"
     @State private var expandedLanguages: Set<String> = []
+    @State private var showSourcePicker: Bool = false
+    @State private var searchText: String = ""
 
     // MARK: - Body
-    @State private var activeTab: CategoryTab = .all
+
     var body: some View {
-        NavigationStack{
-            ScrollView(.vertical){
+        NavigationStack {
+            catalogStack
+                .navigationTitle("Store")
+                .searchable(
+                    text: $searchText,
+                    placement: .toolbar,
+                    prompt: "Search ..."
+                )
+                .refreshable {
+                    await refresh()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        sourcePickerButton
+                    }
+                }
+                .onAppear {
+                    viewModel.setup(modelContext: modelContext, wrapper: wrapper)
+                }
+                .onChange(of: viewModel.modulesForCurrentSource) { _, _ in
+                    updateSelectedCategory()
+                }
+                .onChange(of: searchText) { _, _ in
+                    // Auto-expand languages that still have matches
+                    expandedLanguages = Set(filteredLanguages.keys)
+                }
+        }
+    }
+
+    // MARK: - Catalog stack
+
+    private var catalogStack: some View {
+        VStack(spacing: 0) {
+            if viewModel.isLoading {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(.accentColor)
+                    .transition(.opacity)
+            }
+
+            ScrollView(.vertical) {
                 mainCatalogContent
             }
-            .safeAreaInset(edge: .top){
-                CategoryTabBar(selection: $activeTab)
-                    .padding(.horizontal, 16)
-            }
-            .navigationTitle("Store")
-            .refreshable {
-                        await withCheckedContinuation { continuation in
-                            viewModel.refreshStore()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                continuation.resume()
-                            }
-                        }
-                    }
         }
-        .onAppear {
-            viewModel.setup(modelContext: modelContext, wrapper: wrapper)
-        }
-        .onChange(of: viewModel.allRemoteModules) { oldValue, newValue in
-            updateSelectedCategory()
-        }
-        .onChange(of: activeTab) { oldValue, newValue in
-            if newValue != .all {
-                withAnimation { selectedCategory = newValue.title }
-            }
+        .safeAreaInset(edge: .top) {
+            DynamicCategoryTabBar(
+                categories: availableCategories,
+                selection: $selectedCategory
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
         }
     }
-
-    // MARK: - Subviews
 
     @ViewBuilder
-    private var loadingBar: some View {
-        if viewModel.isLoading {
-            ProgressView()
-                .progressViewStyle(.linear)
-                .tint(.accentColor)
-                .padding(.bottom, -4)
-        }
-    }
-
-    private var categoryPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(viewModel.organizedModules.keys.sorted(), id: \.self) { category in
-                    categoryButton(for: category)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-        }
-    }
-
     private var mainCatalogContent: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            let languages = viewModel.organizedModules[selectedCategory] ?? [:]
-
-            if languages.isEmpty && !viewModel.isLoading {
-                emptyState
-            } else {
-                ForEach(languages.keys.sorted(), id: \.self) { langCode in
-                    let modules = languages[langCode] ?? []
-                    LanguageSection(
-                        langCode: langCode,
-                        count: modules.count,
-                        modules: modules,
-                        bookViewBuilder: { AnyView(bookView(for: $0)) },
-                        isExpanded: expandedLanguages.contains(langCode),
-                        toggle: { toggleLanguage(langCode) }
-                    )
-                }
-            }
+        if viewModel.isLoading && viewModel.organizedModules.isEmpty {
+            ProgressView("Loading modules…")
+                .frame(maxWidth: .infinity)
+                .padding(.top, 80)
+        } else if filteredLanguages.isEmpty {
+            emptyState
+        } else {
+            languageList
         }
     }
 
-    private var emptyState: some View {
-        ContentUnavailableView("No Modules", systemImage: "magnifyingglass")
-            .padding(.top, 100)
+    private var languageList: some View {
+        let languages = filteredLanguages
+
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(languages.keys.sorted(), id: \.self) { langCode in
+                LanguageSection(
+                    langCode: langCode,
+                    count: languages[langCode]?.count ?? 0,
+                    modules: languages[langCode] ?? [],
+                    bookViewBuilder: { module in
+                        AnyView(bookView(for: module))
+                    },
+                    isExpanded: expandedLanguages.contains(langCode),
+                    toggle: { toggleLanguage(langCode) }
+                )
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+        .animation(.easeInOut(duration: 0.15), value: searchText)
     }
 
-    // MARK: - Helpers
+    // MARK: - Dynamic Categories
 
-    private func categoryButton(for category: String) -> some View {
-        Button {
-            withAnimation { selectedCategory = category }
+    private var availableCategories: [String] {
+        let keys = viewModel.organizedModules.keys.sorted()
+        return ["All"] + keys
+    }
+
+    /// Base data for the currently selected category (before search filter)
+    private var languagesForSelectedCategory: [String: [XbibleEngine.SwordModule]] {
+        if selectedCategory == "All" {
+            var merged: [String: [XbibleEngine.SwordModule]] = [:]
+            for (_, langDict) in viewModel.organizedModules {
+                for (lang, modules) in langDict {
+                    merged[lang, default: []].append(contentsOf: modules)
+                }
+            }
+            return merged
+        } else {
+            return viewModel.organizedModules[selectedCategory] ?? [:]
+        }
+    }
+
+    /// Final data shown in the list = category + search filter
+    private var filteredLanguages: [String: [XbibleEngine.SwordModule]] {
+        let base = languagesForSelectedCategory
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        guard !query.isEmpty else { return base }
+
+        var result: [String: [XbibleEngine.SwordModule]] = [:]
+
+        for (langCode, modules) in base {
+            let matching = modules.filter { module in
+                matches(module, query: query, languageCode: langCode)
+            }
+            if !matching.isEmpty {
+                result[langCode] = matching
+            }
+        }
+        return result
+    }
+
+    /// Search across name, description, category, language, source, version, delta, features
+    private func matches(
+        _ module: XbibleEngine.SwordModule,
+        query: String,
+        languageCode: String
+    ) -> Bool {
+        if module.name.lowercased().contains(query) { return true }
+        if module.description.lowercased().contains(query) { return true }
+        if module.category.lowercased().contains(query) { return true }
+        if module.language.lowercased().contains(query) { return true }
+        if languageCode.lowercased().contains(query) { return true }
+        if module.source.lowercased().contains(query) { return true }
+        if module.version.lowercased().contains(query) { return true }
+        if module.delta.lowercased().contains(query) { return true }
+
+        // Features array
+        if module.features.contains(where: { $0.lowercased().contains(query) }) {
+            return true
+        }
+
+        return false
+    }
+
+    // MARK: - Source Picker
+
+    @ViewBuilder
+    private var sourcePickerButton: some View {
+        let label = viewModel.currentSource?.name ?? "Select Source"
+
+        PopoverButton(
+            label: label,
+            title: "Select Source",
+            isPresented: $showSourcePicker,
+            bypassPopover: false
+        ) {
+            sourcePickerContent
+        }
+    }
+
+    @ViewBuilder
+    private var sourcePickerContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.availableSources.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else {
+                ForEach(viewModel.availableSources, id: \.name) { source in
+                    sourceRow(source)
+                }
+            }
+        }
+        #if os(macOS)
+        .padding(12)
+        .frame(minWidth: 220)
+        #else
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        #endif
+    }
+
+    private func sourceRow(_ source: XbibleEngine.ModuleSource) -> some View {
+        let isSelected = viewModel.currentSource?.name == source.name
+
+        return Button {
+            viewModel.selectSource(source, wrapper: wrapper)
+            showSourcePicker = false
         } label: {
-            Text(category)
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    selectedCategory == category
-                        ? Color.accentColor
-                        : Color.primary.opacity(0.05)
-                )
-                .clipShape(Capsule())
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+
+                Text(source.name)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    /// Reads status fresh from viewModel on every render so the card
-    /// always reflects live state (pending, installing, installed, etc.)
+    // MARK: - Empty / Helpers
+
+    private var emptyState: some View {
+        Group {
+            if searchText.isEmpty {
+                ContentUnavailableView("No Modules", systemImage: "magnifyingglass")
+            } else {
+                ContentUnavailableView(
+                    "No Results",
+                    systemImage: "magnifyingglass",
+                    description: Text("No modules match “\(searchText)”")
+                )
+            }
+        }
+        .padding(.top, 100)
+    }
+
     private func bookView(for module: XbibleEngine.SwordModule) -> some View {
         let status = viewModel.installationStates[module.name] ?? .idle
 
@@ -130,7 +272,6 @@ struct StoreView: View {
             status: status,
             showActionButton: true,
             action: {
-                // Re-read at tap time — never act on the captured status
                 let currentStatus = viewModel.installationStates[module.name] ?? .idle
                 handleAction(for: module, status: currentStatus)
             }
@@ -138,7 +279,6 @@ struct StoreView: View {
         .overlay(alignment: .topTrailing) {
             sourceLabel(for: module.source)
         }
-        // Forces card to re-render when its installation status changes
         .id("\(module.name)-\(statusID(status))")
     }
 
@@ -163,14 +303,13 @@ struct StoreView: View {
         }
     }
 
-    /// Stable string ID for diffing status changes via `.id()`
     private func statusID(_ status: InstallationStatus) -> String {
         switch status {
-        case .idle:               return "idle"
-        case .cancelled:          return "cancelled"
-        case .installed:          return "installed"
-        case .pending:            return "pending"
-        case .installing:         return "installing"
+        case .idle:       return "idle"
+        case .cancelled:  return "cancelled"
+        case .installed:  return "installed"
+        case .pending:    return "pending"
+        case .installing: return "installing"
         }
     }
 
@@ -183,240 +322,100 @@ struct StoreView: View {
     }
 
     private func updateSelectedCategory() {
-        let organized = viewModel.organizedModules
-        if selectedCategory.isEmpty || organized[selectedCategory] == nil {
-            selectedCategory = organized.keys.sorted().first ?? "Biblical Texts"
+        let cats = availableCategories
+        if !cats.contains(selectedCategory) {
+            selectedCategory = cats.first ?? "All"
         }
-        if let categoryLanguages = organized[selectedCategory] {
-            expandedLanguages = Set(categoryLanguages.keys)
-        } else {
-            expandedLanguages = []
-        }
-        
-        // Inverse update the custom tab bar selection token to keep bindings aligned
-        if let currentTabMatch = CategoryTab.allCases.first(where: { $0.title == selectedCategory }) {
-            activeTab = currentTabMatch
-        }
+        expandedLanguages = Set(filteredLanguages.keys)
     }
-}
 
-
-
-protocol CategoryTabItem: CaseIterable, Hashable, Equatable{
-    var symbol: String{ get }
-    var title: String { get }
-    var activeTint: Color { get }
-    var activeBackground: Color { get }
-}
-
-
-enum CategoryTab: CategoryTabItem {
-    case  all
-    case audio
-    case bible
-    case commentary
-    case dictionary
-    case glossary
-    case lexicons
-    case dailyDevotional
-    case essays
-    case generalBooks
-    case unorthodox
-    case bibleTimeline
-    
-    // Dynamically matched string representations aligning precisely to FFI payloads
-    var title: String {
-        return switch self{
-        case .all:  "All Library"
-        case .audio: "Audio"
-        case .bible:  "Biblical Texts"
-        case .commentary:  "Commentaries"
-        case .dictionary:  "Dictionaries"
-        case .lexicons:  "Lexicons"
-        case .glossary:  "Glossaries"
-        case .dailyDevotional:  "Daily Devotionals"
-        case .essays: "Essays"
-        case .generalBooks:  "Others"
-        case .unorthodox: "Cults"
-        case .bibleTimeline: "Timeline"
-        }
-    }
-    
-    var symbol: String {
-        return switch self{
-        case .all: "books.vertical"
-        case .audio: "speaker.wave.2"
-        case .bible:  "book.closed"
-        case .commentary: "text.quote"
-        case .dictionary:  "character.book.closed"
-        case .glossary: "character.book.closed"
-        case .lexicons:  "abc"
-        case .dailyDevotional: "sun.max"
-        case .essays:  "text.justify.left"
-        case .generalBooks:  "books.vertical"
-        case .unorthodox:  "exclamationmark.triangle"
-        case .bibleTimeline: "calendar.day.timeline.left"
-        }
-    }
-    
-    var activeTint: Color {
-        return .white
-    }
-    
-    var activeBackground: Color {
-        return switch self{
-        case .all: .pink
-        case .audio: .red
-        case .bible:  .blue
-        case .commentary: .brown
-        case .dictionary:  .gray
-        case .glossary: .teal
-        case .lexicons:  .mint
-        case .dailyDevotional: .green
-        case .essays:  .purple
-        case .generalBooks:  .orange
-        case .unorthodox:  .yellow
-        case .bibleTimeline: .red
-        }
-    }
-}
-
-struct CategoryTabBar<Tab: CategoryTabItem> : View {
-    var spacing: CGFloat = 8
-    var trailingVisibility: CGFloat = 16
-    var isGestureEnabled: Bool = false
-    @Binding var selection: Tab
-    @State private var tabTitleSizes: [Tab: CGSize] = [:]
-    @State private var previousTab: Tab?
-    var body: some View {
-        let isLastTabActive: Bool = selection == allTabs.last
-        GeometryReader{
-            let containerSize = $0.size
-            let activeTitleWidth: CGFloat = tabTitleSizes[selection]?.width ?? 0
-            
-            let activeWidth: CGFloat = activeTitleWidth + 60 + 6
-            
-            let removeCount : Int = isLastTabActive ? 1 : 2
-            let spacingValue: CGFloat = CGFloat(allTabs.count - removeCount) * spacing
-            let inactiveWidth: CGFloat = (containerSize.width - activeWidth - spacing) /  CGFloat(allTabs.count - removeCount)
-            
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: spacing) {
-                    ForEach(allTabs, id: \.title) { tab in
-                        TabItemView(tab, inactiveWidth: inactiveWidth)
-                    }
-                }
+    private func refresh() async {
+        await withCheckedContinuation { continuation in
+            viewModel.refreshStore()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                continuation.resume()
             }
         }
-        //.padding(.trailing, isLastTabActive ? 0 : trailingVisibility)
+    }
+}
+
+// MARK: - Dynamic Tab Bar
+
+struct DynamicCategoryTabBar: View {
+    let categories: [String]
+    @Binding var selection: String
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(categories, id: \.self) { category in
+                    tabButton(for: category)
+                }
+            }
+            .padding(.vertical, 4)
+        }
         .frame(height: 38)
-        .contentShape(.rect)
-        .animation(animation, value: selection)
-        .gesture(toggleGesture, isEnabled: isGestureEnabled)
-        .onAppear{
-            guard previousTab == nil else {return}
-            previousTab = selection
-        }.onChange(of: selection){ oldValue, newValue in
-            previousTab = oldValue
-        }
     }
-    
+
     @ViewBuilder
-    func TabItemView(_ tab: Tab, inactiveWidth: CGFloat) -> some View{
-        let isActive = selection == tab
-        HStack(spacing: 6) {
-            Image(systemName: tab.symbol)
-                .font(.body)
-                .frame(width: 20)
-            
-            Text(tab.title)
-                .font(.callout)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .onGeometryChange(for: CGSize.self){
-                    $0.size
-                } action : { newValue in
-                    tabTitleSizes[tab] = newValue
-                }
-                .frame( width: isActive ? nil : 0, alignment: isActive ? .leading : .center)
-                .opacity(isActive ? 1 : 0)
-        }
-        .foregroundStyle(isActive ? tab.activeTint : .gray)
-        .padding(.horizontal, isActive ? 20: 20)
-        .frame(width: isActive ? nil : 70)
-        .frame(maxHeight: .infinity)
-        .background{
-            ZStack {
-                Capsule()
-                    .fill(.fill)
-                    .opacity(isActive ? 0 : 1)
-                Capsule()
-                    .fill(tab.activeBackground)
-                    .opacity(isActive ? 1: 0)
-                
-            }
-        }
-        .clipShape(.capsule)
-        .contentShape(.capsule)
-        .geometryGroup()
-        .glassEffect()
-        
-        .onTapGesture {
-            if let lastTab = allTabs.last, let previousTab , selection == tab {
-                if selection == lastTab {
-                    selection = previousTab
-                } else {
-                    selection = lastTab
-                }
-            }
-             selection = tab
-            
-        }
-    }
-    
-    var toggleGesture: some Gesture {
-        DragGesture(minimumDistance: 20)
-            .onEnded{
-                value in
-                let xTransilation = value.translation.width
-                guard abs(xTransilation) > 40 else { return }
-                if xTransilation > 0 {
-                    guard let previousTab else {return}
-                    selection = previousTab
-                } else {
-                    guard let lastTab = allTabs.last else {return}
-                    selection = lastTab
-                }
-            }
-    }
-    
-    var animation: Animation {
-        .interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: 0)
-    }
-    
-    var allTabs: [Tab.AllCases.Element] {
-        Array(Tab.allCases)
-    }
-}
+    private func tabButton(for category: String) -> some View {
+        let isActive = selection == category
+        let style = categoryStyle(for: category)
 
-
-struct StoreViewNew: View {
-    @State private var activeTab: CategoryTab = .all
-    var body: some View {
-        NavigationStack{
-            ScrollView(.vertical){
-                CategoryTabBar(selection: $activeTab)
+        Button {
+            withAnimation(.interpolatingSpring(duration: 0.3, bounce: 0)) {
+                selection = category
             }
-            .safeAreaPadding(15)
-            .navigationTitle("Store")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: style.symbol)
+                    .font(.body)
+                    .frame(width: 20)
+
+                if isActive {
+                    Text(category)
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(isActive ? .white : .gray)
+            .padding(.horizontal, isActive ? 16 : 12)
+            .frame(height: 34)
+            .background {
+                Capsule()
+                    .fill(isActive ? style.color : Color.secondary.opacity(0.15))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func categoryStyle(for name: String) -> (symbol: String, color: Color) {
+        switch name {
+        case "All":
+            return ("books.vertical", .pink)
+        case "Biblical Texts", "Bible", "Bibles":
+            return ("book.closed", .blue)
+        case "Commentaries", "Commentary":
+            return ("text.quote", .brown)
+        case "Dictionaries", "Dictionary":
+            return ("character.book.closed", .gray)
+        case "Lexicons", "Lexicon":
+            return ("abc", .mint)
+        case "Glossaries", "Glossary":
+            return ("character.book.closed", .teal)
+        case "Daily Devotionals", "Daily Devotional":
+            return ("sun.max", .green)
+        case "Essays":
+            return ("text.justify.left", .purple)
+        case "Audio":
+            return ("speaker.wave.2", .red)
+        case "Cults", "Unorthodox":
+            return ("exclamationmark.triangle", .yellow)
+        case "Timeline", "Bible Timeline":
+            return ("calendar.day.timeline.left", .red)
+        default:
+            return ("books.vertical", .orange)
         }
     }
 }
-
-//#Preview {
-//    Group {
-//        StoreViewNew()
-//    }
-//}

@@ -66,7 +66,7 @@ struct LibraryView: View {
                 viewModel.loadInstalledModules(wrapper: wrapper, category: category)
             }
         }
-        .onChange(of: wrapper.engineVersion) { _ in
+        .onChange(of: wrapper.engineVersion) { _, _ in
             viewModel.loadInstalledModules(wrapper: wrapper, category: category)
         }
         .toolbar {
@@ -78,10 +78,8 @@ struct LibraryView: View {
                 }
             }
         }
-        .onChange(of: viewModel.installedModules) { _ in
+        .onChange(of: viewModel.installedModules) { _,_ in
             let languages = viewModel.modulesByLanguage
-            
-            // Expand everything by default
             expandedLanguages = Set(languages.keys)
             
         }

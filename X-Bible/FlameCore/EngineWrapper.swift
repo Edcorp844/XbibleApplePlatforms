@@ -80,11 +80,6 @@ class SwordEngineWrapper: ObservableObject {
                     // First-time default selection (no hard-coded KJV)
                     self.ensureDefaultSelectionIfNeeded()
                 }
-            } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Failed to initialize Bible engine."
-                    SwordEngineWrapper.isInitializing = false
-                }
             }
         }
     }

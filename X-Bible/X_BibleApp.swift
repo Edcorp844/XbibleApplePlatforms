@@ -9,10 +9,27 @@ import SwiftUI
 import SwiftData
 import XbibleEngine
 
+#if os(macOS)
+import AppKit
+
+/// macOS-only: disables AppKit's automatic window tabbing so the
+/// "Show Tab Bar" / "Show All Tabs" items disappear from the View menu.
+/// iOS has no equivalent, so this whole block is compiled out on iOS.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+}
+#endif
+
 @main
 struct X_BibleApp: App {
     @StateObject private var engineWrapper = SwordEngineWrapper()
     @Environment(\.openWindow) private var openWindow
+    
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
