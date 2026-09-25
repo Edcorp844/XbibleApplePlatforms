@@ -60,13 +60,6 @@ struct StoreView: View {
 
     private var catalogStack: some View {
         VStack(spacing: 0) {
-            if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .tint(.accentColor)
-                    .transition(.opacity)
-            }
-
             ScrollView(.vertical) {
                 mainCatalogContent
             }
@@ -347,7 +340,7 @@ struct DynamicCategoryTabBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 ForEach(categories, id: \.self) { category in
                     tabButton(for: category)
                 }
@@ -360,7 +353,6 @@ struct DynamicCategoryTabBar: View {
     @ViewBuilder
     private func tabButton(for category: String) -> some View {
         let isActive = selection == category
-        let style = categoryStyle(for: category)
 
         Button {
             withAnimation(.interpolatingSpring(duration: 0.3, bounce: 0)) {
@@ -368,54 +360,23 @@ struct DynamicCategoryTabBar: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: style.symbol)
-                    .font(.body)
-                    .frame(width: 20)
-
-                if isActive {
-                    Text(category)
-                        .font(.callout)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                }
+                Text(category)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                
             }
-            .foregroundStyle(isActive ? .white : .gray)
-            .padding(.horizontal, isActive ? 16 : 12)
-            .frame(height: 34)
-            .background {
-                Capsule()
-                    .fill(isActive ? style.color : Color.secondary.opacity(0.15))
-            }
+            .foregroundStyle(isActive ? .white : .primary)
+            .padding(.horizontal, isActive ? 16 : 12,)
+            .padding(.vertical, 4)
+            
+           
         }
-        .buttonStyle(.plain)
-    }
-
-    private func categoryStyle(for name: String) -> (symbol: String, color: Color) {
-        switch name {
-        case "All":
-            return ("books.vertical", .pink)
-        case "Biblical Texts", "Bible", "Bibles":
-            return ("book.closed", .blue)
-        case "Commentaries", "Commentary":
-            return ("text.quote", .brown)
-        case "Dictionaries", "Dictionary":
-            return ("character.book.closed", .gray)
-        case "Lexicons", "Lexicon":
-            return ("abc", .mint)
-        case "Glossaries", "Glossary":
-            return ("character.book.closed", .teal)
-        case "Daily Devotionals", "Daily Devotional":
-            return ("sun.max", .green)
-        case "Essays":
-            return ("text.justify.left", .purple)
-        case "Audio":
-            return ("speaker.wave.2", .red)
-        case "Cults", "Unorthodox":
-            return ("exclamationmark.triangle", .yellow)
-        case "Timeline", "Bible Timeline":
-            return ("calendar.day.timeline.left", .red)
-        default:
-            return ("books.vertical", .orange)
+        .background {
+            isActive ? Color.accentColor : .primary.opacity(0.3)
         }
+        .buttonStyle(.glass)
+        .clipShape(Capsule())
+        
     }
 }
