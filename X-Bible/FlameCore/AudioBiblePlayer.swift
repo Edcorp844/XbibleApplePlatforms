@@ -74,7 +74,7 @@ public class AudioBiblePlayer: ObservableObject {
     public func skipForward() {
         guard let player = audioPlayer else { return }
         withInteractionLock {
-            rustEngine.skipForward()
+            rustEngine.skipForward(seconds: 200)
             if let targetMs = rustEngine.getPlaybackState()?.currentTimeMs {
                 player.currentTime = TimeInterval(targetMs) / 1000.0
             }
@@ -84,7 +84,7 @@ public class AudioBiblePlayer: ObservableObject {
     public func skipBackward() {
         guard let player = audioPlayer else { return }
         withInteractionLock {
-            rustEngine.skipBackward()
+            rustEngine.skipBackward(seconds: 200)
             if let targetMs = rustEngine.getPlaybackState()?.currentTimeMs {
                 player.currentTime = TimeInterval(targetMs) / 1000.0
             }

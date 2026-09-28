@@ -139,7 +139,7 @@ final class TextConfig {
         fontFamilyName: String = "",
         fontPostScriptName: String = "",
         lineSpacing: Double = 1.5,
-        wordSpacing: Double = 8.0,
+        wordSpacing: Double = 1.5,
         justify: Bool = false,
         showRedWords: Bool = true,
         showStrongs: Bool = true,

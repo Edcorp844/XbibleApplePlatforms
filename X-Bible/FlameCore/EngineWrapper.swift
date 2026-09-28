@@ -69,11 +69,13 @@ class SwordEngineWrapper: ObservableObject {
             guard !SwordEngineWrapper.isInitializing else { return }
             SwordEngineWrapper.isInitializing = true
             
+            
             do {
                 let sharedEngine = XBibleEngine()
                 
                 DispatchQueue.main.async {
                     self.engine = sharedEngine
+                    initLogging()
                     self.isReady = true
                     SwordEngineWrapper.isInitializing = false
                     

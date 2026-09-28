@@ -40,6 +40,11 @@ struct StudyView: View {
 
     // Text config
     @Query private var textConfigs: [TextConfig]
+    
+    // MARK: - Navigation overlay auto-hide
+    @State private var areNavButtonsVisible = true
+    @State private var navAutoHideTask: Task<Void, Never>? = nil
+    private let navAutoHideDelay: Duration = .seconds(2)
 
     @Namespace private var tabNamespace
 
@@ -300,9 +305,10 @@ struct StudyView: View {
                 } label: {
                     Image(systemName: "textformat")
                 }
-                .help("Tweaks & Settings")
+                .help("Font & Settings")
                 .popover(isPresented: $showTweaksPopover, arrowEdge: .bottom) {
                     FontSettingsContent()
+                        .frame(width: 340, height: 480)
                 }
 
                 Button {
@@ -373,8 +379,8 @@ struct StudyView: View {
             ToolbarItem(placement: .topBarLeading) {
                 PopoverButton(
                     label: activeBinding.wrappedValue.selectedBook.isEmpty
-                        ? "Select Passage"
-                        : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
+                    ? "Select Passage"
+                    : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
                     title: "Select Passage",
                     isPresented: $showBookPicker,
                     bypassPopover: useSidebarOverlay
@@ -387,7 +393,7 @@ struct StudyView: View {
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
-
+                        
                         if activePickerTab == 0 {
                             bookPickerContent(for: activeBinding)
                         } else {
@@ -396,14 +402,14 @@ struct StudyView: View {
                     }
                 }
             }
-
+            
             ToolbarSpacer(.flexible, placement: .topBarLeading)
-
+            
             ToolbarItem(placement: .topBarLeading) {
                 PopoverButton(
                     label: activeBinding.wrappedValue.selectedModule.isEmpty
-                        ? "Select Module"
-                        : activeBinding.wrappedValue.selectedModule,
+                    ? "Select Module"
+                    : activeBinding.wrappedValue.selectedModule,
                     title: "Bible Versions",
                     isPresented: $showModulePicker,
                     bypassPopover: useSidebarOverlay
@@ -411,16 +417,37 @@ struct StudyView: View {
                     modulePickerContent(for: activeBinding)
                 }
             }
-
+            
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button(action: createNewTab) {
-                    Image(systemName: "plus")
-                }
-
                 Button(action: { isShowingTabsGallery = true }) {
-                    Image(systemName: "square.on.square")
+                    Image(systemName: "magnifyingglass")
                 }
-                .badge(viewModel.tabs.count)
+                Menu {
+                    Button{
+                        isShowingTabsGallery = true
+                    } label:{
+                        Image(systemName: "square.on.square")
+                        Text("Tabs")
+                    }
+                    Button{
+                        showTweaksPopover = true
+                    } label:{
+                        Image(systemName: "textformat")
+                        Text("Font and Settings")
+                    }
+                   
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .adaptivePresentation(
+                    isPresented: $showTweaksPopover,
+                    title: "Font and Setting",
+                    detents: [.medium, .large],
+                    popoverEdge: .top
+                    
+                ) {
+                    FontSettingsContent()
+                }
             }
         }
     }
@@ -594,80 +621,74 @@ struct StudyView: View {
     @ViewBuilder
     private func studyReaderPane(for tab: Binding<TabInstance>) -> some View {
         GeometryReader { geometry in
-            let isMobile = geometry.size.width < 500
-
+            
+            let navigationButtonsAlignment = (horizontalSizeClass == .compact) ? HorizontalAlignment.trailing: .center
+            
             ZStack {
                 ScrollView {
-                    HStack {
-                        Spacer(minLength: 0)
-                        VStack(alignment: .leading, spacing: isMobile ? 24 : 40) {
-                            ForEach(0..<tab.wrappedValue.sections.count, id: \.self) { index in
-                                sectionView(tab.wrappedValue.sections[index])
-                            }
-                        }
-                        .padding(.horizontal, isMobile ? 16 : 40)
-                        .padding(.vertical, isMobile ? 20 : 40)
-                        .frame(maxWidth: isMobile ? .infinity : 1200)
-                        Spacer(minLength: 0)
+                    SectionContentView(
+                        sections: tab.wrappedValue.sections,
+                        onWordClick: { word in lookupWord(word) },
+                        onStrongsClicked: { strongs in lookupStrongs(strongs) }
+                    ).padding()
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in revealNavButtons() }
+                        .onEnded   { _ in revealNavButtons() }
+                )
+                .onTapGesture { revealNavButtons() }
+                
+                
+                
+                VStack(alignment: navigationButtonsAlignment )
+                {
+                    HStack(alignment: .bottom) {
+                        NavigationRectButton(
+                            icon: "chevron.compact.left",
+                            action: goToPreviousChapter,
+                            isDisabled: !canGoToPrevious(),
+                            isSide: true
+                        )
+                        Spacer()
+                        NavigationRectButton(
+                            icon: "chevron.compact.right",
+                            action: goToNextChapter,
+                            isDisabled: !canGoToNext(),
+                            isSide: true
+                        )
                     }
                     .padding()
-                }
-
-                HStack(alignment: .bottom) {
-                    NavigationRectButton(
-                        icon: "chevron.left",
-                        action: goToPreviousChapter,
-                        isDisabled: !canGoToPrevious(),
-                        isSide: true
-                    )
-                    Spacer()
-                    NavigationRectButton(
-                        icon: "chevron.right",
-                        action: goToNextChapter,
-                        isDisabled: !canGoToNext(),
-                        isSide: true
-                    )
-                }
-                .padding()
+                } .opacity(areNavButtonsVisible ? 1 : 0)
+                    .allowsHitTesting(areNavButtonsVisible)
+                    .animation(.easeInOut(duration: 0.25), value: areNavButtonsVisible)
+                
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    
+    /// Show the nav buttons and (re)schedule the 2-second auto-hide.
+    private func revealNavButtons() {
+        // Cancel any pending hide so we don't hide mid-interaction.
+        navAutoHideTask?.cancel()
 
-    @ViewBuilder
-    private func sectionView(_ section: ModuleSection) -> some View {
-        let alignment: HorizontalAlignment = section.textDirection == .rtl ? .trailing : .leading
+        // Show immediately if hidden.
+        if !areNavButtonsVisible {
+            areNavButtonsVisible = true
+        }
 
-        VStack(alignment: alignment, spacing: 20) {
-            if !section.title.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(0..<section.title.count, id: \.self) { index in
-                        wordView(for: section, at: index)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-
-            ForEach(section.verses, id: \.osisId) { verse in
-                verseView(verse, direction: section.textDirection)
+        // Schedule a fresh hide.
+        navAutoHideTask = Task { @MainActor in
+            try? await Task.sleep(for: navAutoHideDelay)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                areNavButtonsVisible = false
             }
         }
     }
-
-    private func verseView(_ verse: XbibleEngine.Verse, direction: XbibleEngine.TextDirection) -> some View {
-        VerseView(
-            verse: verse,
-            direction: direction,
-            onWordTextClicked: { word in lookupWord(word) },
-            onStrongsClicked: { strongs in lookupStrongs(strongs) }
-        )
-    }
-
-    private func wordView(for section: ModuleSection, at index: Int) -> some View {
-        let currentWord = section.title[index]
-        return WordView(word: currentWord, onWordTextClicked: { self.lookupWord(currentWord) })
-    }
-
+    
     // MARK: - Pickers
 
     @ViewBuilder
@@ -936,7 +957,7 @@ struct StudyView: View {
 
     // MARK: - Lookups
 
-    private func lookupWord(_ word: XbibleEngine.Word) {
+    private func lookupWord(_ word: Word) {
         let cleanWord = word.text.trimmingCharacters(in: .punctuationCharacters)
         guard !cleanWord.isEmpty, let index = viewModel.activeTabIndex else { return }
 

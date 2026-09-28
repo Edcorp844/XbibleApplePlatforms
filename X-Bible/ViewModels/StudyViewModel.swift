@@ -26,4 +26,6 @@ final class StudyViewModel: ObservableObject {
         guard let id = selectedTabId else { return nil }
         return tabs.firstIndex(where: { $0.id == id })
     }
+    
+    
 }

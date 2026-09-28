@@ -8,9 +8,11 @@
 import SwiftUI
 
 struct FlowLayout: Layout {
-    var spacing: CGFloat
-    /// Explicit direction. Prefer setting this (or rely on the environment).
-    var layoutDirection: LayoutDirection = .leftToRight
+    /// Horizontal gap between items on the same row (word spacing).
+    var spacing: CGFloat = 10
+
+    /// Vertical gap between wrapped rows (line spacing).
+    var lineSpacing: CGFloat = 10
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -18,7 +20,8 @@ struct FlowLayout: Layout {
         cache: inout ()
     ) -> CGSize {
         let maxWidth = proposal.replacingUnspecifiedDimensions().width
-        return arrange(maxWidth: maxWidth, subviews: subviews).size
+        let result = layout(at: .zero, in: maxWidth, subviews: subviews)
+        return result.size
     }
 
     func placeSubviews(
@@ -27,71 +30,55 @@ struct FlowLayout: Layout {
         subviews: Subviews,
         cache: inout ()
     ) {
-        let result = arrange(maxWidth: bounds.width, subviews: subviews)
-
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(
-                    x: bounds.minX + position.x,
-                    y: bounds.minY + position.y
-                ),
-                proposal: .unspecified
-            )
-        }
+        _ = layout(at: bounds.origin, in: bounds.width, subviews: subviews, place: true)
     }
 
-    // MARK: - Arrangement
-
-    private struct Arrangement {
-        var size: CGSize
-        var positions: [CGPoint]
-    }
-
-    private func arrange(maxWidth: CGFloat, subviews: Subviews) -> Arrangement {
-        guard !subviews.isEmpty else {
-            return Arrangement(size: .zero, positions: [])
-        }
-
-        let isRTL = layoutDirection == .rightToLeft
-
-        // Reverse so the logical first item lands on the right in RTL.
-        let ordered = isRTL ? Array(subviews.reversed()) : Array(subviews)
-
-        var positions = Array(repeating: CGPoint.zero, count: subviews.count)
-        var x: CGFloat = 0
-        var y: CGFloat = 0
+    private func layout(
+        at origin: CGPoint,
+        in maxWidth: CGFloat,
+        subviews: Subviews,
+        place: Bool = false
+    ) -> (size: CGSize, lastY: CGFloat) {
+        var x = origin.x
+        var y = origin.y
         var rowHeight: CGFloat = 0
-        var maxRowWidth: CGFloat = 0
+        var maxX: CGFloat = origin.x
 
-        for (i, subview) in ordered.enumerated() {
+        let limit = origin.x + maxWidth
+
+        for (index, subview) in subviews.enumerated() {
             let size = subview.sizeThatFits(.unspecified)
 
-            // Wrap if this item would exceed the available width
-            // (and we already have something on the current row).
-            if x + size.width > maxWidth && x > 0 {
-                x = 0
-                y += rowHeight + spacing
+            // Wrap if this item would overflow the row AND it isn't the
+            // first item on the current row (nothing to wrap if the row
+            // is empty — an oversized item just overflows, which is the
+            // correct behavior and mirrors symmetrically under RTL).
+            if x > origin.x, x + size.width > limit {
+                x = origin.x
+                y += rowHeight + lineSpacing   // gap between wrapped rows
                 rowHeight = 0
             }
 
-            // Map back to the original subview index
-            let originalIndex = isRTL ? (subviews.count - 1 - i) : i
-            positions[originalIndex] = CGPoint(x: x, y: y)
+            if place {
+                subview.place(
+                    at: CGPoint(x: x, y: y),
+                    proposal: .unspecified
+                )
+            }
 
-            x += size.width + spacing
+            x += size.width
+
+            if index < subviews.count - 1 {
+                x += spacing                    // horizontal gap between words
+            }
+
             rowHeight = max(rowHeight, size.height)
-            maxRowWidth = max(maxRowWidth, x)
+            maxX = max(maxX, x - (index < subviews.count - 1 ? spacing : 0))
         }
 
-        // Remove the trailing spacing that was added after the last item
-        if maxRowWidth > 0 {
-            maxRowWidth -= spacing
-        }
-
-        let totalHeight = y + rowHeight
-        return Arrangement(
-            size: CGSize(width: maxRowWidth, height: totalHeight),
-            positions: positions
+        return (
+            CGSize(width: maxX - origin.x, height: y + rowHeight - origin.y),
+            y + rowHeight
         )
     }
 }

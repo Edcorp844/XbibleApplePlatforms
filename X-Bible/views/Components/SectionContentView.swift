@@ -11,58 +11,66 @@ import XbibleEngine
 struct SectionContentView: View {
     let sections: [XbibleEngine.Section]
     var onWordClick: ((XbibleEngine.Word) -> Void)? = nil
-    
+    var onStrongsClicked: ((String) -> Void)? = nil
+
     @EnvironmentObject private var textConfigVM: TextConfigViewModel
-    
+
     var body: some View {
         let config = textConfigVM.config
-        
-        // Dynamically compute layout spacers from global configuration line spacing
-        let lineSpacingFactor = CGFloat(config.lineSpacing)
-        let sectionSpacing = 24.0 * lineSpacingFactor
-        let titleBottomPadding = 6.0 * lineSpacingFactor
-        let verseVerticalPadding = 2.0 * lineSpacingFactor
-        let verseBlockSpacing = 14.0 * lineSpacingFactor
-        
-        VStack(alignment: .leading, spacing: sectionSpacing) {
+        let font = CGFloat(config.fontSize)
+
+        // --- Derived typographic metrics ---
+        // config.lineSpacing and config.wordSpacing are signed "steps"
+        // around a neutral baseline of 0.
+        let baseLineGap = font * 0.35
+        let lineStep    = font * 0.15
+        let lineSpacing = max(font * 0.05, baseLineGap + CGFloat(config.lineSpacing) * lineStep)
+
+
+        let baseWordGap = font * 0.25
+        let wordStep    = font * 0.10
+        let wordSpacing = max(0, baseWordGap + CGFloat(config.wordSpacing) * wordStep)
+
+        let sectionSpacing     = 0.0//font * 1.6 + CGFloat(config.lineSpacing) * font * 0.20
+        let verseBlockSpacing  = 0.0//font * 0.9 + CGFloat(config.lineSpacing) * font * 0.10
+        let titleBottomPadding = font * 0.4 + CGFloat(config.lineSpacing) * font * 0.08
+
+        VStack(alignment: .leading, spacing: lineSpacing) {
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                VStack(alignment: section.textDirection == .rtl ? .trailing : .leading, spacing: verseBlockSpacing) {
-                    
-                    // --- 1. OPTIMIZED TITLE ROW ---
+                VStack(
+                    alignment: section.textDirection == .rtl ? .trailing : .leading,
+                    spacing: lineSpacing
+                ) {
                     if !section.title.isEmpty {
-                        FlowLayout(spacing: CGFloat(config.wordSpacing)) {
+                        FlowLayout(
+                            spacing: wordSpacing,
+                            lineSpacing: lineSpacing
+                        ) {
                             ForEach(Array(section.title.enumerated()), id: \.offset) { _, item in
-                                WordView(word: item, isTitle: true, onWordTextClicked: {
-                                    onWordClick?(item)
-                                })
+                                WordView(
+                                    word: item,
+                                    isTitle: true,
+                                    onWordTextClicked: { word in onWordClick?(word) },
+                                    onStrongsClicked: { strongs in onStrongsClicked?(strongs) }
+                                )
                             }
                         }
-                        .padding(.bottom, titleBottomPadding)
+                        .padding(.vertical, titleBottomPadding)
+                        
                     }
-                    
-                    // --- 2. VERSE ROWS WITH DYNAMIC LINE AND WORD SPACING ---
-                    ForEach(section.verses, id: \.osisId) { (verse: XbibleEngine.Verse) in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("\(verse.number)")
-                                .font(.system(size: CGFloat(config.fontSize) * 0.8, weight: .regular))
-                                .foregroundColor(.secondary)
-                                .padding(.trailing, 4)
-                                .baselineOffset(4)
-                            
-                            FlowLayout(spacing: CGFloat(config.wordSpacing)) {
-                                ForEach(Array(verse.words.enumerated()), id: \.offset) { _, word in
-                                    WordView(word: word, onWordTextClicked: {
-                                        onWordClick?(word)
-                                    })
-                                }
-                            }
-                        }
-                        .padding(.vertical, verseVerticalPadding)
+
+                    ForEach(section.verses, id: \.osisId) { verse in
+                        VerseView(
+                            verse: verse,
+                            direction: section.textDirection,
+                            onWordTextClicked: { word in onWordClick?(word) },
+                            onStrongsClicked: { strongs in onStrongsClicked?(strongs) }
+                        )
                     }
                 }
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 20)
+        //.padding(.vertical, 20)
     }
 }

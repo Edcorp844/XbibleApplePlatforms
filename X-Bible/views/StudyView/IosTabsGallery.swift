@@ -45,8 +45,8 @@ struct TabsGalleryView: View {
             .navigationTitle("Tabs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.buttonStyle(.glassProminent)
                 }
                 ToolbarItem(placement: .bottomBar) {
                     HStack {

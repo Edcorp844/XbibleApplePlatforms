@@ -107,6 +107,5 @@ struct FontSettingsContent: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 340, height: 480)
     }
 }
