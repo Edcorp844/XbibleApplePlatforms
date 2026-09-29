@@ -1,0 +1,71 @@
+import SwiftUI
+
+struct AnimatedCustomSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    
+    // 🌟 CUSTOM HIGHS/LOWS CONFIGURATION PASSES
+    var idleHeight: CGFloat = 8
+    var interactingHeight: CGFloat = 24
+    var isActive: Bool = true
+    
+    @State private var isInteracting = false
+    @GestureState private var isDragging = false
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            
+            let rangeLength = range.upperBound - range.lowerBound
+            let currentPercentage = rangeLength > 0 ? (value - range.lowerBound) / rangeLength : 0.0
+            
+            ZStack(alignment: .leading) {
+                // Background Track
+                Capsule()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(height: isInteracting ? interactingHeight : idleHeight)
+                
+                // Active Progress Fill
+                Capsule()
+                    .fill(isActive ? Color.white : Color.gray)
+                    .frame(width: CGFloat(currentPercentage) * width, height: isInteracting ? interactingHeight : idleHeight)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                isActive ?
+                DragGesture(minimumDistance: 0)
+                    .updating($isDragging) { _, state, _ in
+                        state = true
+                    }
+                    .onChanged { gesture in
+                        if !isInteracting {
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                isInteracting = true
+                            }
+                        }
+                        
+                        let locationX = gesture.location.x
+                        let percentage = Double(locationX / width)
+                        let clampedPercentage = min(max(percentage, 0.0), 1.0)
+                        
+                        self.value = range.lowerBound + (clampedPercentage * rangeLength)
+                    }
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            isInteracting = false
+                        }
+                    }
+                : nil
+            )
+        }
+        // 🌟 Ensures the bounding geometry safely accommodates whichever height is larger
+        .frame(height: max(idleHeight, interactingHeight))
+    }
+    
+    private func formatTime(_ timeInSeconds: Double) -> String {
+        let totalSeconds = Int(timeInSeconds)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
