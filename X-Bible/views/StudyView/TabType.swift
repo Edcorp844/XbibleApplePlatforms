@@ -82,9 +82,9 @@ enum TabType: String, Codable, CaseIterable, Identifiable {
     /// ScrollView of sections). Tabs that don't get a bespoke view.
     var usesReaderPane: Bool {
         switch self {
-        case .bible, .parallel, .generalBook:
+        case .bible, .parallel, .commentary, .generalBook:
             return true
-        case .search, .dictionary, .lexicon, .commentary:
+        case .search, .dictionary, .lexicon:
             return false
         }
     }

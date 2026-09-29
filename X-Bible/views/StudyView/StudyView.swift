@@ -69,10 +69,7 @@ struct StudyView: View {
     @State private var showTweaksPopover = false
     @State private var showMorePopover = false
 
-    // Nav-button auto-hide
-    @State private var areNavButtonsVisible = true
-    @State private var navAutoHideTask: Task<Void, Never>? = nil
-    private let navAutoHideDelay: Duration = .seconds(2)
+    
 
     // Text config
     @Query private var textConfigs: [TextConfig]
@@ -279,7 +276,9 @@ struct StudyView: View {
     private var macOSToolbar: some ToolbarContent {
         if let activeBinding = activeTabBinding {
             ToolbarItemGroup(placement: .secondaryAction) {
-                if activeBinding.wrappedValue.type.usesReaderPane {
+                switch activeBinding.wrappedValue.type {
+                    
+                case .bible:
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedModule.isEmpty
                         ? "Select Module"
@@ -310,6 +309,49 @@ struct StudyView: View {
                     ) {
                         chapterPickerContent(for: activeBinding)
                     }
+                    
+                case  .commentary:
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedCommentaryModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedCommentaryModule,
+                        title: "Commentaries",
+                        isPresented: $showModulePicker,
+                        bypassPopover: false
+                    ) {
+                        modulePickerContent(for: activeBinding)
+                    }
+                    
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedBook.isEmpty
+                        ? "Select Book"
+                        : activeBinding.wrappedValue.selectedBook,
+                        title: "Select Book",
+                        isPresented: $showBookPicker,
+                        bypassPopover: false
+                    ) {
+                        bookPickerContent(for: activeBinding)
+                    }
+                    
+                    PopoverButton(
+                        label: "\(activeBinding.wrappedValue.selectedChapter)",
+                        title: "Chapter",
+                        isPresented: $showChapterPicker,
+                        bypassPopover: false
+                    ) {
+                        chapterPickerContent(for: activeBinding)
+                    }
+                    
+                case .search:
+                    EmptyView()
+                case .generalBook:
+                    EmptyView()
+                case .dictionary:
+                    EmptyView()
+                case .lexicon:
+                    EmptyView()
+                case .parallel:
+                    EmptyView()
                 }
             }
             
@@ -521,7 +563,6 @@ struct StudyView: View {
         }
     }
 #endif
-
     // MARK: - macOS Custom Tabs
 
 #if os(macOS)
@@ -649,48 +690,7 @@ struct StudyView: View {
 
     @ViewBuilder
     private func bibleReaderPane(for tab: Binding<TabInstance>, geometry: GeometryProxy) -> some View {
-        let navigationButtonsAlignment = (horizontalSizeClass == .compact)
-            ? HorizontalAlignment.trailing
-            : .center
-
-        ZStack {
-            ScrollView {
-                SectionContentView(
-                    sections: tab.wrappedValue.sections,
-                    onWordClick: { word in viewModel.lookupWord(word) },
-                    onStrongsClicked: { strongs in viewModel.lookupStrongs(strongs) }
-                )
-                .padding()
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in revealNavButtons() }
-                    .onEnded   { _ in revealNavButtons() }
-            )
-            .onTapGesture { revealNavButtons() }
-
-            VStack(alignment: navigationButtonsAlignment) {
-                HStack(alignment: .bottom) {
-                    NavigationRectButton(
-                        icon: "chevron.compact.left",
-                        action: viewModel.goToPreviousChapter,
-                        isDisabled: !viewModel.canGoToPrevious(),
-                        isSide: true
-                    )
-                    Spacer()
-                    NavigationRectButton(
-                        icon: "chevron.compact.right",
-                        action: viewModel.goToNextChapter,
-                        isDisabled: !viewModel.canGoToNext(),
-                        isSide: true
-                    )
-                }
-                .padding()
-            }
-            .opacity(areNavButtonsVisible ? 1 : 0)
-            .allowsHitTesting(areNavButtonsVisible)
-            .animation(.easeInOut(duration: 0.25), value: areNavButtonsVisible)
-        }
+        BibleTabView(tab: tab)
     }
 
     // MARK: - Parallel Reader Pane (stub)
@@ -864,28 +864,17 @@ struct StudyView: View {
 
     @ViewBuilder
     private func commentaryPane(for tab: Binding<TabInstance>, geometry: GeometryProxy) -> some View {
-        ContentUnavailableView(
-            "Commentary",
-            systemImage: TabType.commentary.icon,
-            description: Text("Read commentary on a passage.")
-        )
-    }
-
-    // MARK: - Auto-hide helpers
-
-    private func revealNavButtons() {
-        navAutoHideTask?.cancel()
-
-        if !areNavButtonsVisible { areNavButtonsVisible = true }
-
-        navAutoHideTask = Task { @MainActor in
-            try? await Task.sleep(for: navAutoHideDelay)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.25)) {
-                areNavButtonsVisible = false
-            }
+        if (viewModel.availableCommentaries.isEmpty) {
+            ContentUnavailableView(
+                "Commentary",
+                systemImage: TabType.commentary.icon,
+                description: Text("Read commentary on a passage.")
+            )
+        } else{
+            CommentaryTabView(tab: tab)
         }
     }
+
 
     // MARK: - Pickers
 
@@ -926,16 +915,25 @@ struct StudyView: View {
 
     @ViewBuilder
     private func modulePickerContent(for tab: Binding<TabInstance>) -> some View {
+       
+        
         VStack {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 140))], spacing: 12) {
-                    ForEach(viewModel.availableModules, id: \.name) { module in
+                    ForEach( viewModel.availableModules, id: \.name) { module in
                         moduleSelectionRow(
                             module.name,
                             language: module.language,
                             isSelected: tab.wrappedValue.selectedModule == module.name
                         ) {
-                            viewModel.selectModule(module.name)
+                            switch tab.wrappedValue.type{
+                            case .commentary:
+                                viewModel.selectCommentaryModule(module.name);
+                               // later to support other types
+                            default:
+                                viewModel.selectModule(module.name)
+                            }
+                           
                             withAnimation { showModulePicker = false }
                         }
                     }

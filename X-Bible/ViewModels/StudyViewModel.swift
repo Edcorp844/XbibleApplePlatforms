@@ -22,10 +22,11 @@ final class StudyViewModel: ObservableObject {
     @Published var selectedTabId: UUID?
     @Published var showTabOverview: Bool = false
 
-    @Published var availableModules: [XbibleEngine.SwordModule] = []
+    @Published var availableBibleModules: [XbibleEngine.SwordModule] = []
     @Published var availableBooks: [XbibleEngine.ModuleBook] = []
     @Published var availableLexicons: [XbibleEngine.SwordModule] = []
     @Published var availableCommentaries: [XbibleEngine.SwordModule] = []
+    @Published var availableGeneraBooks: [XbibleEngine.SwordModule] = []
 
     @Published var selctedTabGroup: TabGroup = TabGroup(name: "My Tabs")
     @Published var tabGroups: [TabGroup] = []
@@ -72,7 +73,7 @@ final class StudyViewModel: ObservableObject {
 
     var safeDefaultModule: String {
         if let m = wrapper?.selectedModule, !m.isEmpty { return m }
-        return availableModules.first?.name ?? ""
+        return availableBibleModules.first?.name ?? ""
     }
 
     var safeDefaultBook: String {
@@ -101,21 +102,46 @@ final class StudyViewModel: ObservableObject {
         activeTabSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var availableModules: [XbibleEngine.SwordModule] {
+        guard let activeTab = self.activeTab else { return self.availableBibleModules
+ }
+        switch activeTab.type {
+        case .bible:
+            return self.availableBibleModules
+            
+        case .search:
+            return self.availableBibleModules
+        case .generalBook:
+            return  self.availableGeneraBooks
+            
+        case .dictionary:
+            return self.availableLexicons
+        case .lexicon:
+            return self.availableLexicons
+            
+        case .commentary:
+            return self.availableCommentaries
+        case .parallel:
+            return self.availableBibleModules
+        }
+    }
     // MARK: - Initialization
 
     func initializeData() {
         guard let engine, let engineQueue else { return }
 
         engineQueue.async { [weak self] in
-            let modules      = engine.getBibleModules()
+            let bibles     = engine.getBibleModules()
             let lexicons     = engine.getLexiconModules()
             let commentaries = engine.getCommentaryModules()
+            let books = engine.getBookModules()
 
             Task { @MainActor in
                 guard let self else { return }
-                self.availableModules      = modules
+                self.availableBibleModules      = bibles
                 self.availableLexicons     = lexicons
                 self.availableCommentaries = commentaries
+                self.availableGeneraBooks = books
 
                 self.restoreGroups()
                 self.ensureDefaultGroup()
@@ -257,7 +283,9 @@ final class StudyViewModel: ObservableObject {
             tab.searchType = searchType
 
         case .commentary:
-            tab.selectedModule = safeDefaultModule
+            tab.selectedBook    = safeDefaultBook
+            tab.selectedChapter = safeDefaultChapter
+
             tab.selectedCommentaryModule = availableCommentaries.first?.name ?? ""
 
         case .dictionary, .lexicon:
@@ -420,6 +448,12 @@ final class StudyViewModel: ObservableObject {
         tabs[idx].selectedModule = moduleName
         updateBooks()
     }
+    
+  func selectCommentaryModule(_ moduleName: String) {
+        guard let idx = activeTabIndex else { return }
+        tabs[idx].selectedCommentaryModule = moduleName
+        loadCommentaryContent()
+    }
 
     func selectBook(_ bookName: String) {
         guard let idx = activeTabIndex else { return }
@@ -443,7 +477,7 @@ final class StudyViewModel: ObservableObject {
 
         var currentModule = tabs[index].selectedModule
         if currentModule.isEmpty {
-            currentModule = availableModules.first?.name ?? ""
+            currentModule = availableBibleModules.first?.name ?? ""
         }
 
         guard !currentModule.isEmpty else {
@@ -494,7 +528,7 @@ final class StudyViewModel: ObservableObject {
 
         var currentModule = tab.selectedModule
         if currentModule.isEmpty {
-            currentModule = availableModules.first?.name ?? ""
+            currentModule = availableBibleModules.first?.name ?? ""
         }
         guard !currentModule.isEmpty else { return }
 
@@ -545,7 +579,7 @@ final class StudyViewModel: ObservableObject {
             return
         }
 
-        guard let swordModule = availableModules.first(where: { $0.name == moduleName }) else {
+        guard let swordModule = availableBibleModules.first(where: { $0.name == moduleName }) else {
             tabs[idx].isSearching = false
             return
         }
@@ -775,12 +809,6 @@ final class StudyViewModel: ObservableObject {
                 self.tabs[idx] = updated
             }
         }
-    }
-
-    func selectCommentaryModule(_ moduleName: String) {
-        guard let idx = activeTabIndex else { return }
-        tabs[idx].selectedCommentaryModule = moduleName
-        loadCommentaryContent()
     }
 
     // MARK: - Persistence
