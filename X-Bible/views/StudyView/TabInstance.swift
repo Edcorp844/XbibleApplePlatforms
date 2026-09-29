@@ -25,6 +25,10 @@ struct TabInstance: Identifiable, Equatable, Hashable {
     var selectedChapter: Int = 1
     var sections: [ModuleSection] = []
 
+    /// The id of the currently selected general-book leaf node.
+    /// `nil` when nothing has been chosen yet.
+    var selectedGeneralBookNodeId: UInt32? = nil
+
     // MARK: - Search state
 
     var searchQuery: String = ""

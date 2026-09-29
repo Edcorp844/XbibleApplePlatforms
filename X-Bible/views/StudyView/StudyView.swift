@@ -69,7 +69,13 @@ struct StudyView: View {
     @State private var showTweaksPopover = false
     @State private var showMorePopover = false
 
-    
+    // Nav-button auto-hide
+    @State private var areNavButtonsVisible = true
+    @State private var navAutoHideTask: Task<Void, Never>? = nil
+    private let navAutoHideDelay: Duration = .seconds(2)
+
+    // General-book tree expansion state
+    @State private var expandedNodes: Set<UInt32> = []
 
     // Text config
     @Query private var textConfigs: [TextConfig]
@@ -177,19 +183,24 @@ struct StudyView: View {
                             Spacer()
                             VStack(spacing: 0) {
                                 if showBookPicker {
-                                    VStack(spacing: 16) {
-                                        Picker("Selection Mode", selection: $activePickerTab) {
-                                            Text("Books").tag(0)
-                                            Text("Chapters").tag(1)
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 12)
+                                    if activeBinding.wrappedValue.type == .generalBook {
+                                        generalBookTreePickerContent(for: activeBinding)
+                                            .padding(.top, 12)
+                                    } else {
+                                        VStack(spacing: 16) {
+                                            Picker("Selection Mode", selection: $activePickerTab) {
+                                                Text("Books").tag(0)
+                                                Text("Chapters").tag(1)
+                                            }
+                                            .pickerStyle(.segmented)
+                                            .padding(.horizontal, 16)
+                                            .padding(.top, 12)
 
-                                        if activePickerTab == 0 {
-                                            bookPickerContent(for: activeBinding)
-                                        } else {
-                                            chapterPickerContent(for: activeBinding)
+                                            if activePickerTab == 0 {
+                                                bookPickerContent(for: activeBinding)
+                                            } else {
+                                                chapterPickerContent(for: activeBinding)
+                                            }
                                         }
                                     }
                                 } else if showModulePicker {
@@ -277,7 +288,7 @@ struct StudyView: View {
         if let activeBinding = activeTabBinding {
             ToolbarItemGroup(placement: .secondaryAction) {
                 switch activeBinding.wrappedValue.type {
-                    
+
                 case .bible:
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedModule.isEmpty
@@ -289,7 +300,7 @@ struct StudyView: View {
                     ) {
                         modulePickerContent(for: activeBinding)
                     }
-                    
+
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedBook.isEmpty
                         ? "Select Book"
@@ -300,7 +311,7 @@ struct StudyView: View {
                     ) {
                         bookPickerContent(for: activeBinding)
                     }
-                    
+
                     PopoverButton(
                         label: "\(activeBinding.wrappedValue.selectedChapter)",
                         title: "Chapter",
@@ -309,8 +320,8 @@ struct StudyView: View {
                     ) {
                         chapterPickerContent(for: activeBinding)
                     }
-                    
-                case  .commentary:
+
+                case .commentary:
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedCommentaryModule.isEmpty
                         ? "Select Module"
@@ -321,7 +332,7 @@ struct StudyView: View {
                     ) {
                         modulePickerContent(for: activeBinding)
                     }
-                    
+
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedBook.isEmpty
                         ? "Select Book"
@@ -332,7 +343,7 @@ struct StudyView: View {
                     ) {
                         bookPickerContent(for: activeBinding)
                     }
-                    
+
                     PopoverButton(
                         label: "\(activeBinding.wrappedValue.selectedChapter)",
                         title: "Chapter",
@@ -341,20 +352,35 @@ struct StudyView: View {
                     ) {
                         chapterPickerContent(for: activeBinding)
                     }
-                    
-                case .search:
-                    EmptyView()
+
                 case .generalBook:
-                    EmptyView()
-                case .dictionary:
-                    EmptyView()
-                case .lexicon:
-                    EmptyView()
-                case .parallel:
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedModule,
+                        title: "General Books",
+                        isPresented: $showModulePicker,
+                        bypassPopover: false
+                    ) {
+                        modulePickerContent(for: activeBinding)
+                    }
+
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedGeneralBookNodeId == nil
+                        ? "Select Reference"
+                        : generalBookLabel(for: activeBinding.wrappedValue.selectedGeneralBookNodeId!),
+                        title: "Select Reference",
+                        isPresented: $showBookPicker,
+                        bypassPopover: false
+                    ) {
+                        generalBookTreePickerContent(for: activeBinding)
+                    }
+
+                case .search, .dictionary, .lexicon, .parallel:
                     EmptyView()
                 }
             }
-            
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     viewModel.createNewTab(ofType: .search)
@@ -363,9 +389,9 @@ struct StudyView: View {
                 }
                 .help("Search")
             }
-            
+
             ToolbarSpacer(.fixed)
-            
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showTweaksPopover.toggle()
@@ -377,7 +403,7 @@ struct StudyView: View {
                     FontSettingsContent()
                         .frame(width: 340, height: 480)
                 }
-                
+
                 Button {
                     showMorePopover.toggle()
                 } label: {
@@ -391,9 +417,9 @@ struct StudyView: View {
                             viewModel.duplicateCurrentTab()
                         }
                         .buttonStyle(.plain)
-                        
+
                         Divider()
-                        
+
                         Button("Export Passage...") {
                             showMorePopover = false
                         }
@@ -403,13 +429,12 @@ struct StudyView: View {
                     .frame(width: 180)
                 }
             }
-            
+
             ToolbarItemGroup(placement: .accessoryBar(id: "tab-items")) {
                 macOSWindowTabsView()
                 NewTabMenu()
                     .menuStyle(.borderlessButton)
             }
-
         }
     }
 #endif
@@ -422,49 +447,100 @@ struct StudyView: View {
         if let activeBinding = activeTabBinding {
             switch activeBinding.wrappedValue.type {
 
-            // ── Bible / General Book — passage + module, plus trailing menu
-            case .bible, .generalBook:
-                if activeBinding.wrappedValue.type.usesReaderPane {
-                    ToolbarItem(placement: .topBarLeading) {
-                        PopoverButton(
-                            label: activeBinding.wrappedValue.selectedBook.isEmpty
-                            ? "Select Passage"
-                            : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
-                            title: "Select Passage",
-                            isPresented: $showBookPicker,
-                            bypassPopover: useSidebarOverlay
-                        ) {
-                            VStack(spacing: 16) {
-                                Picker("Selection Mode", selection: $activePickerTab) {
-                                    Text("Books").tag(0)
-                                    Text("Chapters").tag(1)
-                                }
-                                .pickerStyle(.segmented)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
+            // ── Bible — passage + module, plus trailing menu
+            case .bible:
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedBook.isEmpty
+                        ? "Select Passage"
+                        : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
+                        title: "Select Passage",
+                        isPresented: $showBookPicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        VStack(spacing: 16) {
+                            Picker("Selection Mode", selection: $activePickerTab) {
+                                Text("Books").tag(0)
+                                Text("Chapters").tag(1)
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
 
-                                if activePickerTab == 0 {
-                                    bookPickerContent(for: activeBinding)
-                                } else {
-                                    chapterPickerContent(for: activeBinding)
-                                }
+                            if activePickerTab == 0 {
+                                bookPickerContent(for: activeBinding)
+                            } else {
+                                chapterPickerContent(for: activeBinding)
                             }
                         }
                     }
+                }
 
-                    ToolbarSpacer(.flexible, placement: .topBarLeading)
+                ToolbarSpacer(.flexible, placement: .topBarLeading)
 
-                    ToolbarItem(placement: .topBarLeading) {
-                        PopoverButton(
-                            label: activeBinding.wrappedValue.selectedModule.isEmpty
-                            ? "Select Module"
-                            : activeBinding.wrappedValue.selectedModule,
-                            title: "Bible Versions",
-                            isPresented: $showModulePicker,
-                            bypassPopover: useSidebarOverlay
-                        ) {
-                            modulePickerContent(for: activeBinding)
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedModule,
+                        title: "Bible Versions",
+                        isPresented: $showModulePicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        modulePickerContent(for: activeBinding)
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { viewModel.createNewTab(ofType: .search) } label: {
+                            Label("Search", systemImage: "magnifyingglass")
                         }
+                        Button {
+                            showTweaksPopover = true
+                        } label: {
+                            Label("Font & Settings", systemImage: "textformat")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .adaptivePresentation(
+                        isPresented: $showTweaksPopover,
+                        title: "Font & Settings",
+                        detents: [.large],
+                        popoverEdge: .top
+                    ) {
+                        FontSettingsContent()
+                    }
+                }
+
+            // ── General Book — module + tree reference picker
+            case .generalBook:
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedModule,
+                        title: "General Books",
+                        isPresented: $showModulePicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        modulePickerContent(for: activeBinding)
+                    }
+                }
+
+                ToolbarSpacer(.flexible, placement: .topBarLeading)
+
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedGeneralBookNodeId == nil
+                        ? "Select Reference"
+                        : generalBookLabel(for: activeBinding.wrappedValue.selectedGeneralBookNodeId!),
+                        title: "Select Reference",
+                        isPresented: $showBookPicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        generalBookTreePickerContent(for: activeBinding)
                     }
                 }
 
@@ -563,6 +639,7 @@ struct StudyView: View {
         }
     }
 #endif
+
     // MARK: - macOS Custom Tabs
 
 #if os(macOS)
@@ -690,7 +767,48 @@ struct StudyView: View {
 
     @ViewBuilder
     private func bibleReaderPane(for tab: Binding<TabInstance>, geometry: GeometryProxy) -> some View {
-        BibleTabView(tab: tab)
+        let navigationButtonsAlignment = (horizontalSizeClass == .compact)
+            ? HorizontalAlignment.trailing
+            : .center
+
+        ZStack {
+            ScrollView {
+                SectionContentView(
+                    sections: tab.wrappedValue.sections,
+                    onWordClick: { word in viewModel.lookupWord(word) },
+                    onStrongsClicked: { strongs in viewModel.lookupStrongs(strongs) }
+                )
+                .padding()
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in revealNavButtons() }
+                    .onEnded   { _ in revealNavButtons() }
+            )
+            .onTapGesture { revealNavButtons() }
+
+            VStack(alignment: navigationButtonsAlignment) {
+                HStack(alignment: .bottom) {
+                    NavigationRectButton(
+                        icon: "chevron.compact.left",
+                        action: viewModel.goToPreviousChapter,
+                        isDisabled: !viewModel.canGoToPrevious(),
+                        isSide: true
+                    )
+                    Spacer()
+                    NavigationRectButton(
+                        icon: "chevron.compact.right",
+                        action: viewModel.goToNextChapter,
+                        isDisabled: !viewModel.canGoToNext(),
+                        isSide: true
+                    )
+                }
+                .padding()
+            }
+            .opacity(areNavButtonsVisible ? 1 : 0)
+            .allowsHitTesting(areNavButtonsVisible)
+            .animation(.easeInOut(duration: 0.25), value: areNavButtonsVisible)
+        }
     }
 
     // MARK: - Parallel Reader Pane (stub)
@@ -770,7 +888,7 @@ struct StudyView: View {
         viewModel.selectedTabId = newTab.id
         viewModel.updateBooks()
     }
-    
+
     @ViewBuilder
     private func searchHitRow(_ hit: SearchHit, tab: Binding<TabInstance>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -864,17 +982,28 @@ struct StudyView: View {
 
     @ViewBuilder
     private func commentaryPane(for tab: Binding<TabInstance>, geometry: GeometryProxy) -> some View {
-        if (viewModel.availableCommentaries.isEmpty) {
-            ContentUnavailableView(
-                "Commentary",
-                systemImage: TabType.commentary.icon,
-                description: Text("Read commentary on a passage.")
-            )
-        } else{
-            CommentaryTabView(tab: tab)
-        }
+        ContentUnavailableView(
+            "Commentary",
+            systemImage: TabType.commentary.icon,
+            description: Text("Read commentary on a passage.")
+        )
     }
 
+    // MARK: - Auto-hide helpers
+
+    private func revealNavButtons() {
+        navAutoHideTask?.cancel()
+
+        if !areNavButtonsVisible { areNavButtonsVisible = true }
+
+        navAutoHideTask = Task { @MainActor in
+            try? await Task.sleep(for: navAutoHideDelay)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                areNavButtonsVisible = false
+            }
+        }
+    }
 
     // MARK: - Pickers
 
@@ -915,25 +1044,16 @@ struct StudyView: View {
 
     @ViewBuilder
     private func modulePickerContent(for tab: Binding<TabInstance>) -> some View {
-       
-        
         VStack {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 140))], spacing: 12) {
-                    ForEach( viewModel.availableModules, id: \.name) { module in
+                    ForEach(viewModel.availableModules, id: \.name) { module in
                         moduleSelectionRow(
                             module.name,
                             language: module.language,
                             isSelected: tab.wrappedValue.selectedModule == module.name
                         ) {
-                            switch tab.wrappedValue.type{
-                            case .commentary:
-                                viewModel.selectCommentaryModule(module.name);
-                               // later to support other types
-                            default:
-                                viewModel.selectModule(module.name)
-                            }
-                           
+                            viewModel.selectModule(module.name)
                             withAnimation { showModulePicker = false }
                         }
                     }
@@ -1125,4 +1245,178 @@ struct StudyView: View {
         }
         .buttonStyle(.plain)
     }
+
+    // MARK: - General Book Tree Picker
+
+    @ViewBuilder
+    private func generalBookTreePickerContent(for tab: Binding<TabInstance>) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Contents")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            Divider()
+
+            if let root = viewModel.generalBookRoot {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(root.children, id: \.id) { child in
+                            GeneralBookNodeRow(
+                                node: child,
+                                tab: tab,
+                                depth: 0,
+                                expandedNodes: $expandedNodes,
+                                onSelect: { id in
+                                    viewModel.selectGeneralBookNode(id: id)
+                                    #if os(macOS)
+                                    showBookPicker = false
+                                    #else
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showBookPicker = false
+                                    }
+                                    #endif
+                                }
+                            )
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading contents…")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(24)
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 320, maxWidth: 420)
+        .frame(height: 460)
+        #else
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 400, maxHeight: 600)
+        #endif
+        .onAppear {
+            if let root = viewModel.generalBookRoot,
+               let selectedId = tab.wrappedValue.selectedGeneralBookNodeId {
+                expandPathToSelection(root: root, selectedId: selectedId)
+            }
+        }
+    }
+
+    private func expandPathToSelection(root: XbibleEngine.TreeNode, selectedId: UInt32) {
+        func walk(_ node: XbibleEngine.TreeNode, ancestors: [UInt32]) -> Bool {
+            if node.id == selectedId {
+                for id in ancestors { expandedNodes.insert(id) }
+                return true
+            }
+            for child in node.children {
+                if walk(child, ancestors: ancestors + [node.id]) { return true }
+            }
+            return false
+        }
+        _ = walk(root, ancestors: [])
+    }
+
+    private func generalBookLabel(for id: UInt32) -> String {
+        guard let node = viewModel.availableNodes.first(where: { $0.id == id }) else {
+            return "Select Reference"
+        }
+        return node.title.isEmpty ? node.path : node.title
+    }
 }
+
+// MARK: - Recursive tree row (concrete View → no opaque-type recursion)
+
+private struct GeneralBookNodeRow: View {
+    let node: XbibleEngine.TreeNode
+    @Binding var tab: TabInstance
+    let depth: Int
+    @Binding var expandedNodes: Set<UInt32>
+    let onSelect: (UInt32) -> Void
+
+    private var isLeaf: Bool { node.children.isEmpty }
+    private var isSelected: Bool { tab.selectedGeneralBookNodeId == node.id }
+    private var title: String { node.title.isEmpty ? node.path : node.title }
+
+    var body: some View {
+        if isLeaf {
+            Button {
+                onSelect(node.id)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(title)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected
+                              ? Color.accentColor.opacity(0.15)
+                              : Color.clear)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, CGFloat(depth) * 14)
+        } else {
+            DisclosureGroup(
+                isExpanded: Binding(
+                    get: { expandedNodes.contains(node.id) },
+                    set: { isOpen in
+                        if isOpen { expandedNodes.insert(node.id) }
+                        else      { expandedNodes.remove(node.id) }
+                    }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(node.children, id: \.id) { child in
+                        GeneralBookNodeRow(
+                            node: child,
+                            tab: $tab,
+                            depth: depth + 1,
+                            expandedNodes: $expandedNodes,
+                            onSelect: onSelect
+                        )
+                    }
+                }
+                .padding(.top, 2)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.vertical, 4)
+            }
+            .padding(.leading, CGFloat(depth) * 14)
+        }
+    }
+}
+

@@ -24,10 +24,15 @@ final class StudyViewModel: ObservableObject {
 
     @Published var availableBibleModules: [XbibleEngine.SwordModule] = []
     @Published var availableBooks: [XbibleEngine.ModuleBook] = []
+    @Published var availableNodes: [XbibleEngine.TreeNode] = []
     @Published var availableLexicons: [XbibleEngine.SwordModule] = []
     @Published var availableCommentaries: [XbibleEngine.SwordModule] = []
     @Published var availableGeneraBooks: [XbibleEngine.SwordModule] = []
 
+    // Add to @Published properties:
+    @Published var generalBookRoot: XbibleEngine.TreeNode? = nil
+    
+    
     @Published var selctedTabGroup: TabGroup = TabGroup(name: "My Tabs")
     @Published var tabGroups: [TabGroup] = []
 
@@ -103,45 +108,42 @@ final class StudyViewModel: ObservableObject {
     }
 
     var availableModules: [XbibleEngine.SwordModule] {
-        guard let activeTab = self.activeTab else { return self.availableBibleModules
- }
+        guard let activeTab = self.activeTab else { return self.availableBibleModules }
         switch activeTab.type {
         case .bible:
             return self.availableBibleModules
-            
         case .search:
             return self.availableBibleModules
         case .generalBook:
-            return  self.availableGeneraBooks
-            
+            return self.availableGeneraBooks
         case .dictionary:
             return self.availableLexicons
         case .lexicon:
             return self.availableLexicons
-            
         case .commentary:
             return self.availableCommentaries
         case .parallel:
             return self.availableBibleModules
         }
     }
+
     // MARK: - Initialization
 
     func initializeData() {
         guard let engine, let engineQueue else { return }
 
         engineQueue.async { [weak self] in
-            let bibles     = engine.getBibleModules()
+            let bibles       = engine.getBibleModules()
             let lexicons     = engine.getLexiconModules()
             let commentaries = engine.getCommentaryModules()
-            let books = engine.getBookModules()
+            let books        = engine.getBookModules()
 
             Task { @MainActor in
                 guard let self else { return }
-                self.availableBibleModules      = bibles
+                self.availableBibleModules = bibles
                 self.availableLexicons     = lexicons
                 self.availableCommentaries = commentaries
-                self.availableGeneraBooks = books
+                self.availableGeneraBooks  = books
 
                 self.restoreGroups()
                 self.ensureDefaultGroup()
@@ -269,10 +271,13 @@ final class StudyViewModel: ObservableObject {
         tab.type = type
 
         switch type {
-        case .bible, .parallel, .generalBook:
+        case .bible, .parallel:
             tab.selectedModule  = safeDefaultModule
             tab.selectedBook    = safeDefaultBook
             tab.selectedChapter = safeDefaultChapter
+
+        case .generalBook:
+            tab.selectedModule = availableGeneraBooks.first?.name ?? ""
 
         case .search:
             if let active = activeTab, !active.selectedModule.isEmpty {
@@ -285,7 +290,6 @@ final class StudyViewModel: ObservableObject {
         case .commentary:
             tab.selectedBook    = safeDefaultBook
             tab.selectedChapter = safeDefaultChapter
-
             tab.selectedCommentaryModule = availableCommentaries.first?.name ?? ""
 
         case .dictionary, .lexicon:
@@ -300,10 +304,15 @@ final class StudyViewModel: ObservableObject {
         }
 
         switch type {
-        case .bible, .parallel, .generalBook:
+        case .bible, .parallel:
             if !tab.selectedModule.isEmpty { updateBooks() }
+
+        case .generalBook:
+            if !tab.selectedModule.isEmpty { updateGeneralBookNodes() }
+
         case .commentary:
             loadCommentaryContent()
+
         default:
             break
         }
@@ -327,6 +336,7 @@ final class StudyViewModel: ObservableObject {
         copy.selectedModule          = source.selectedModule
         copy.selectedBook            = source.selectedBook
         copy.selectedChapter         = source.selectedChapter
+        copy.selectedGeneralBookNodeId = source.selectedGeneralBookNodeId
         copy.searchQuery             = source.searchQuery
         copy.searchType              = source.searchType
         copy.selectedWordForLookup   = source.selectedWordForLookup
@@ -345,19 +355,26 @@ final class StudyViewModel: ObservableObject {
         }
 
         switch copy.type {
-        case .bible, .parallel, .generalBook:
+        case .bible, .parallel:
             updateBooks()
+
+        case .generalBook:
+            updateGeneralBookNodes()
+
         case .search:
             searchType = copy.searchType
             if !copy.searchQuery.isEmpty { performSearch(copy.searchQuery) }
+
         case .dictionary:
             if !copy.selectedWordForLookup.isEmpty {
                 lookupWord(text: copy.selectedWordForLookup)
             }
+
         case .lexicon:
             if !copy.selectedStrongsForLookup.isEmpty {
                 lookupStrongs(copy.selectedStrongsForLookup)
             }
+
         case .commentary:
             loadCommentaryContent()
         }
@@ -425,19 +442,26 @@ final class StudyViewModel: ObservableObject {
         let tab = tabs[idx]
 
         switch tab.type {
-        case .bible, .parallel, .generalBook:
+        case .bible, .parallel:
             updateBooks()
+
+        case .generalBook:
+            updateGeneralBookNodes()
+
         case .search:
             searchType = tab.searchType
             if !tab.searchQuery.isEmpty { performSearch(tab.searchQuery) }
+
         case .dictionary:
             if !tab.selectedWordForLookup.isEmpty {
                 lookupWord(text: tab.selectedWordForLookup)
             }
+
         case .lexicon:
             if !tab.selectedStrongsForLookup.isEmpty {
                 lookupStrongs(tab.selectedStrongsForLookup)
             }
+
         case .commentary:
             loadCommentaryContent()
         }
@@ -448,8 +472,8 @@ final class StudyViewModel: ObservableObject {
         tabs[idx].selectedModule = moduleName
         updateBooks()
     }
-    
-  func selectCommentaryModule(_ moduleName: String) {
+
+    func selectCommentaryModule(_ moduleName: String) {
         guard let idx = activeTabIndex else { return }
         tabs[idx].selectedCommentaryModule = moduleName
         loadCommentaryContent()
@@ -467,6 +491,8 @@ final class StudyViewModel: ObservableObject {
         tabs[idx].selectedChapter = chapter
         loadContent()
     }
+
+    // MARK: - Bible content
 
     func updateBooks() {
         guard let engine, let engineQueue,
@@ -552,6 +578,133 @@ final class StudyViewModel: ObservableObject {
         }
     }
 
+    // MARK: - General Book
+
+    func selectGeneralBookModule(_ moduleName: String) {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook
+        else { return }
+        tabs[idx].selectedModule = moduleName
+        tabs[idx].selectedGeneralBookNodeId = nil
+        updateGeneralBookNodes()
+    }
+
+    /// Fetch the tree structure for the active general-book tab,
+    /// flatten it to leaf nodes, and publish them.
+    func updateGeneralBookNodes() {
+        guard let engine, let engineQueue,
+              let tabId = selectedTabId,
+              let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].type == .generalBook
+        else { return }
+
+        var currentModule = tabs[index].selectedModule
+        if currentModule.isEmpty {
+            currentModule = availableGeneraBooks.first?.name ?? ""
+        }
+        guard !currentModule.isEmpty,
+              let swordModule = availableGeneraBooks.first(where: { $0.name == currentModule })
+        else {
+            availableNodes = []
+            generalBookRoot = nil     
+            return
+        }
+
+        let capturedTabId = tabId
+
+        engineQueue.async { [weak self] in
+            let root = engine.getGeneralBookStructure(bookModule: swordModule)
+            let leaves = Self.collectLeafNodes(root: root)
+
+            Task { @MainActor in
+                guard let self else { return }
+                self.availableNodes = leaves
+                self.generalBookRoot = root
+
+                guard let idx = self.tabs.firstIndex(where: { $0.id == capturedTabId })
+                else { return }
+
+                if self.tabs[idx].selectedModule.isEmpty {
+                    self.tabs[idx].selectedModule = currentModule
+                }
+
+                let currentId = self.tabs[idx].selectedGeneralBookNodeId
+                let stillValid = currentId.flatMap { id in
+                    leaves.contains(where: { $0.id == id })
+                } ?? false
+
+                if !stillValid {
+                    self.tabs[idx].selectedGeneralBookNodeId = leaves.first?.id
+                }
+
+                self.loadGeneralBookContent()
+            }
+        }
+    }
+
+    /// Fetch and publish `sections` for the currently selected
+    /// general-book leaf.
+    func loadGeneralBookContent() {
+        guard let engine, let engineQueue,
+              let tabId = selectedTabId,
+              let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].type == .generalBook
+        else { return }
+
+        let tab = tabs[index]
+        guard let nodeId = tab.selectedGeneralBookNodeId,
+              let leaf = availableNodes.first(where: { $0.id == nodeId }),
+              let swordModule = availableGeneraBooks.first(where: { $0.name == tab.selectedModule })
+        else {
+            if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                tabs[idx].sections = []
+            }
+            return
+        }
+
+        let capturedTabId = tabId
+
+        engineQueue.async { [weak self] in
+            // NOTE: engine API has a typo — `getGenearlBookContent`.
+            let sections = engine.getGenearlBookContent(bookModule: swordModule, node: leaf)
+
+            Task { @MainActor in
+                guard let self,
+                      let idx = self.tabs.firstIndex(where: { $0.id == capturedTabId })
+                else { return }
+
+                var updated = self.tabs[idx]
+                updated.sections = sections
+                self.tabs[idx] = updated
+            }
+        }
+    }
+
+    /// Select a general-book leaf node and load its content.
+    func selectGeneralBookNode(id: UInt32) {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook
+        else { return }
+        tabs[idx].selectedGeneralBookNodeId = id
+        loadGeneralBookContent()
+    }
+
+    /// Recursively collect leaf nodes (nodes with no children).
+    /// Skips the synthetic "/" root.
+    private static func collectLeafNodes(root: TreeNode) -> [TreeNode] {
+        var leaves: [TreeNode] = []
+        if root.children.isEmpty {
+            if root.path != "/" {
+                leaves.append(root)
+            }
+        } else {
+            for child in root.children {
+                leaves.append(contentsOf: collectLeafNodes(root: child))
+            }
+        }
+        return leaves
+    }
+
     // MARK: - Search
 
     func performSearch(_ query: String) {
@@ -623,7 +776,6 @@ final class StudyViewModel: ObservableObject {
         guard let idx = activeTabIndex, tabs[idx].type == .search else { return }
         tabs[idx].searchQuery = query
     }
-
 
     func updateSearchType(_ type: SearchType) {
         searchType = type
@@ -813,9 +965,6 @@ final class StudyViewModel: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Coalesce writes. Cancel any pending write and schedule a new
-    /// one 250ms out. If the user is making rapid changes, only the
-    /// last one commits.
     private func schedulePersist() {
         persistTask?.cancel()
         persistTask = Task { @MainActor [weak self] in
@@ -825,9 +974,6 @@ final class StudyViewModel: ObservableObject {
         }
     }
 
-    /// Synchronous write. Kept private so callers can't accidentally
-    /// block the main thread with it; they must go through
-    /// `schedulePersist()`.
     private func persistGroups() {
         let persistent = tabGroups.filter { $0.persistence == .persistent }
         if let data = try? JSONEncoder().encode(persistent) {
@@ -860,7 +1006,7 @@ final class StudyViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Chapter navigation
+    // MARK: - Bible chapter navigation
 
     func canGoToPrevious() -> Bool {
         guard let idx = activeTabIndex,
@@ -914,5 +1060,45 @@ final class StudyViewModel: ObservableObject {
             tabs[idx].selectedChapter = 1
         }
         loadContent()
+    }
+
+    // MARK: - General book leaf navigation
+
+    func canGoToPreviousGeneralBookNode() -> Bool {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook,
+              let currentId = tabs[idx].selectedGeneralBookNodeId,
+              let pos = availableNodes.firstIndex(where: { $0.id == currentId })
+        else { return false }
+        return pos > 0
+    }
+
+    func canGoToNextGeneralBookNode() -> Bool {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook,
+              let currentId = tabs[idx].selectedGeneralBookNodeId,
+              let pos = availableNodes.firstIndex(where: { $0.id == currentId })
+        else { return false }
+        return pos < availableNodes.count - 1
+    }
+
+    func goToPreviousGeneralBookNode() {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook,
+              let currentId = tabs[idx].selectedGeneralBookNodeId,
+              let pos = availableNodes.firstIndex(where: { $0.id == currentId }),
+              pos > 0
+        else { return }
+        selectGeneralBookNode(id: availableNodes[pos - 1].id)
+    }
+
+    func goToNextGeneralBookNode() {
+        guard let idx = activeTabIndex,
+              tabs[idx].type == .generalBook,
+              let currentId = tabs[idx].selectedGeneralBookNodeId,
+              let pos = availableNodes.firstIndex(where: { $0.id == currentId }),
+              pos < availableNodes.count - 1
+        else { return }
+        selectGeneralBookNode(id: availableNodes[pos + 1].id)
     }
 }
