@@ -25,12 +25,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct X_BibleApp: App {
     @StateObject private var engineWrapper = SwordEngineWrapper()
+
+    /// Created once here and shared through the environment so every
+    /// sub-view sees the same instance. Do not also declare a
+    /// `@StateObject` for this in `StudyView` — that would create a
+    /// second instance and cause state drift.
+    @StateObject private var studyViewModel = StudyViewModel()
+
     @Environment(\.openWindow) private var openWindow
-    
+
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
-    
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             StudyPageState.self,
@@ -42,15 +49,21 @@ struct X_BibleApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
+            print("❌ ModelContainer error: \(error)")
+            print("   localizedDescription: \(error.localizedDescription)")
+            if let swiftDataError = error as? SwiftDataError {
+                print("   SwiftDataError: \(swiftDataError)")
+            }
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
-    
+
     var body: some Scene {
         WindowGroup {
             if engineWrapper.isReady {
                 ContentView()
                     .environmentObject(engineWrapper)
+                    .environmentObject(studyViewModel)
             } else if let error = engineWrapper.errorMessage {
                 Text(error).foregroundColor(.red)
             } else {
@@ -58,6 +71,7 @@ struct X_BibleApp: App {
             }
         }
         .environmentObject(engineWrapper)
+        .environmentObject(studyViewModel)
         .modelContainer(sharedModelContainer)
     }
 }

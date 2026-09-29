@@ -69,11 +69,10 @@ struct AdaptivePresentationModifier<Presented: View>: ViewModifier {
                         Button {
                             isPresented = false
                         } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 15, weight: .semibold))
+                            Image(systemName: "checkmark")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Close")
+                        .buttonStyle(.glassProminent)
+                        .accessibilityLabel("Done")
                     }
                 }
         }

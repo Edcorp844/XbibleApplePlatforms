@@ -14,25 +14,32 @@ struct SectionContentView: View {
     var onStrongsClicked: ((String) -> Void)? = nil
 
     @EnvironmentObject private var textConfigVM: TextConfigViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let config = textConfigVM.config
-        let font = CGFloat(config.fontSize)
+
+        // ── Resolve point size once, from the same path VerseView and
+        //    WordView use. This is `systemBody × (1 + fontSizePercent/100)`.
+        let font = config.scaledPointSize(for: dynamicTypeSize)
 
         // --- Derived typographic metrics ---
         // config.lineSpacing and config.wordSpacing are signed "steps"
-        // around a neutral baseline of 0.
+        // around a neutral baseline of 0. Everything here derives from
+        // the already-Dynamic-Type-scaled `font`, so the whole layout
+        // stays proportional at every size.
         let baseLineGap = font * 0.35
         let lineStep    = font * 0.15
-        let lineSpacing = max(font * 0.05, baseLineGap + CGFloat(config.lineSpacing) * lineStep)
-
+        let lineSpacing = max(font * 0.05,
+                              baseLineGap + CGFloat(config.lineSpacing) * lineStep)
 
         let baseWordGap = font * 0.25
         let wordStep    = font * 0.10
-        let wordSpacing = max(0, baseWordGap + CGFloat(config.wordSpacing) * wordStep)
+        let wordSpacing = max(0,
+                              baseWordGap + CGFloat(config.wordSpacing) * wordStep)
 
-        let sectionSpacing     = 0.0//font * 1.6 + CGFloat(config.lineSpacing) * font * 0.20
-        let verseBlockSpacing  = 0.0//font * 0.9 + CGFloat(config.lineSpacing) * font * 0.10
+        let sectionSpacing     = 0.0   // reserved — see note below
+        let verseBlockSpacing  = 0.0   // reserved — see note below
         let titleBottomPadding = font * 0.4 + CGFloat(config.lineSpacing) * font * 0.08
 
         VStack(alignment: .leading, spacing: lineSpacing) {
@@ -56,7 +63,6 @@ struct SectionContentView: View {
                             }
                         }
                         .padding(.vertical, titleBottomPadding)
-                        
                     }
 
                     ForEach(section.verses, id: \.osisId) { verse in
@@ -71,6 +77,5 @@ struct SectionContentView: View {
             }
         }
         .padding(.horizontal, 16)
-        //.padding(.vertical, 20)
     }
 }

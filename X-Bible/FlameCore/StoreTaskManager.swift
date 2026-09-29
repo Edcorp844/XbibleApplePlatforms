@@ -2,7 +2,7 @@ import Foundation
 import XbibleEngine
 import Combine
 import SwiftData
-#if canImport(ActivityKit)
+#if os(iOS)
 import ActivityKit
 #endif
 
@@ -28,7 +28,7 @@ struct InstallTracker: Identifiable {
 
 // MARK: - Live Activity Attributes
 
-#if canImport(ActivityKit)
+#if os(iOS)
 /// Shared between the app target and the widget extension target.
 /// If Xcode reports "cannot find type ModuleDownloadAttributes" in the
 /// widget extension, verify this file (or a copy of this struct) is a
@@ -72,7 +72,7 @@ class StoreTaskManager: ObservableObject {
 
     // MARK: - Live Activity Tracking
 
-    #if canImport(ActivityKit)
+    #if os(iOS)
     /// One Live Activity per module install. Keyed by moduleName.
     /// Only touched from the main thread — read/write inside
     /// `DispatchQueue.main.async` blocks, or via the helpers below.
@@ -371,7 +371,7 @@ class StoreTaskManager: ObservableObject {
 
     // MARK: - Live Activity Helpers
 
-    #if canImport(ActivityKit)
+    #if os(iOS)
     /// Start a Live Activity for the given module. Must be called on the
     /// main thread — the caller does so inside DispatchQueue.main.async.
     private func startLiveActivity(moduleName: String, sourceName: String) {
@@ -456,7 +456,7 @@ class StoreTaskManager: ObservableObject {
         activeLiveActivities.removeValue(forKey: moduleName)
     }
     #else
-    // Stubs for non-ActivityKit platforms (macOS). Compile cleanly, do nothing.
+    // Stubs for non-iOS platforms (macOS). Compile cleanly, do nothing.
     private func startLiveActivity(moduleName: String, sourceName: String) { }
     private func updateLiveActivity(
         moduleName: String,

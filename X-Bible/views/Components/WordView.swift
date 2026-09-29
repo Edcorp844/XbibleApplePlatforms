@@ -13,6 +13,7 @@ struct WordView: View {
     var isTitle: Bool
 
     @EnvironmentObject private var textConfigVM: TextConfigViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var onWordTextClicked: ((Word) -> Void)? = nil
     var onStrongsClicked: ((String) -> Void)? = nil
@@ -29,87 +30,50 @@ struct WordView: View {
         self.onStrongsClicked = onStrongsClicked
     }
 
-    private var activeFontSize: CGFloat {
-        let baseSize = CGFloat(textConfigVM.config.fontSize)
-        return isTitle ? baseSize * 1.1 : baseSize
-    }
-
-    // MARK: - Added-words handling
-
-    /// Matches the Kotlin `WordConfig.addedWordsStyle`.
-    /// `word.isAdded` should come from your engine — swap the property
-    /// name if your `Word` type uses a different flag (e.g. `isAddedText`,
-    /// `isSupplied`, `added`).
-    private var isAddedWord: Bool {
-        word.isAdded
-    }
-
-    /// The displayed string, with brackets applied when the style calls for it.
-    private var displayedText: String {
-        let base = word.text
-        guard isAddedWord else { return base }
-
-        switch textConfigVM.config.addedWordsStyle {
-        case .brackets:
-            return "[\(base)]"
-        case .italic:
-            return base
-        @unknown default:
-            return base
-        }
-    }
-
-    /// Whether the word should render italic.
-    /// Italic is true if the word is natively italic OR if the
-    /// "added words" style asks for italics and this word is added.
-    private var shouldRenderItalic: Bool {
-        if word.isItalic { return true }
-        if isAddedWord, textConfigVM.config.addedWordsStyle == .italic {
-            return true
-        }
-        return false
-    }
-
     // MARK: - Body
 
     var body: some View {
-        let dbConfig = textConfigVM.config
-        let fontSize = activeFontSize
+        let config = textConfigVM.config
 
-        let badgeGap = fontSize * 0.10
+        // ── Compute once per render. Everything downstream uses these locals.
+        let base = config.scaledPointSize(for: dynamicTypeSize)
+        let fontSize: CGFloat = isTitle ? base * 1.1 : base
+        let resolvedFont: Font = makeFont(size: fontSize, config: config)
+
+        let badgeGap    = fontSize * 0.10
         let strongsSize = max(8, fontSize * 0.45)
         let morphSize   = max(7, fontSize * 0.40)
 
+        // ── Pre-resolve style flags so the view tree stays flat.
+        let isAdded      = word.isAdded
+        let displayText  = renderText(word.text, isAdded: isAdded, style: config.addedWordsStyle)
+        let italic       = shouldItalic(word: word, isAdded: isAdded, style: config.addedWordsStyle)
+        let weight: Font.Weight = (isTitle || word.isBoldText) ? .semibold : .regular
+        let textColor: Color = (config.showRedWords && word.isRed) ? .red : .primary
+
         VStack(alignment: .center, spacing: badgeGap) {
 
-            Text(displayedText)
-                .font(
-                    .system(
-                        size: fontSize,
-                        design: dbConfig.useSystemFont ? dbConfig.systemDesign : .serif
-                    )
-                )
-                .fontWeight((isTitle || word.isBoldText) ? .semibold : .regular)
-                .italic(shouldRenderItalic)
-                .foregroundColor((dbConfig.showRedWords && word.isRed) ? .red : .primary)
-                .onTapGesture {
-                    onWordTextClicked?(word)
-                }
+            Text(displayText)
+                .font(resolvedFont)
+                .fontWeight(weight)
+                .italic(italic)
+                .foregroundColor(textColor)
+                .onTapGesture { onWordTextClicked?(word) }
 
-            if dbConfig.showStrongs,
+            if config.showStrongs,
                let lex = word.lex,
                !lex.strongs.isEmpty || !lex.morph.isEmpty {
 
                 HStack(spacing: fontSize * 0.08) {
-                    if dbConfig.showStrongs, let strong = lex.strongs.first {
+                    if config.showStrongs, let strong = lex.strongs.first {
                         Text(strong)
-                            .font(.system(size: strongsSize, weight: .bold, design: .monospaced))
+                            .font(.system(size: strongsSize,
+                                          weight: .bold,
+                                          design: .monospaced))
                             .foregroundColor(.primary)
-                            .onTapGesture {
-                                onStrongsClicked?(strong)
-                            }
+                            .onTapGesture { onStrongsClicked?(strong) }
                     }
-                    if dbConfig.showMorph, let morph = lex.morph.first {
+                    if config.showMorph, let morph = lex.morph.first {
                         Text(morph)
                             .font(.system(size: morphSize))
                             .foregroundColor(.secondary)
@@ -121,5 +85,40 @@ struct WordView: View {
                 .cornerRadius(fontSize * 0.18)
             }
         }
+    }
+
+    // MARK: - Pure helpers (no view-tree side effects)
+
+    @inline(__always)
+    private func makeFont(size: CGFloat, config: TextConfig) -> Font {
+        if config.useSystemFont {
+            return .system(size: size, design: config.systemDesign)
+        }
+        if !config.fontPostScriptName.isEmpty,
+           InstalledFonts.isInstalled(config.fontPostScriptName) {
+            return .custom(config.fontPostScriptName, size: size)
+        }
+        return .system(size: size, design: config.systemDesign)
+    }
+
+    @inline(__always)
+    private func renderText(_ base: String,
+                            isAdded: Bool,
+                            style: AddedWordsStyle) -> String {
+        guard isAdded else { return base }
+        switch style {
+        case .brackets: return "[\(base)]"
+        case .italic:   return base
+        @unknown default: return base
+        }
+    }
+
+    @inline(__always)
+    private func shouldItalic(word: XbibleEngine.Word,
+                              isAdded: Bool,
+                              style: AddedWordsStyle) -> Bool {
+        if word.isItalic { return true }
+        if isAdded, style == .italic { return true }
+        return false
     }
 }

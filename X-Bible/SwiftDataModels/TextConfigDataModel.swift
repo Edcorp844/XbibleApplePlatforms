@@ -34,7 +34,6 @@ extension Font.Design: @retroactive CaseIterable, @retroactive Identifiable {
 
     public var id: String { storageKey }
 
-    /// Human-readable name for pickers and menus.
     var displayName: String {
         switch self {
         case .default:    return "Default"
@@ -45,8 +44,6 @@ extension Font.Design: @retroactive CaseIterable, @retroactive Identifiable {
         }
     }
 
-    /// Stable string used for persistence — decoupled from `displayName`
-    /// so you can rename the UI label without invalidating saved configs.
     var storageKey: String {
         switch self {
         case .default:    return "default"
@@ -62,26 +59,64 @@ extension Font.Design: @retroactive CaseIterable, @retroactive Identifiable {
     }
 }
 
-// MARK: - Installed Fonts
+// MARK: - Installed Fonts (cached)
 
 /// Auto-discovers every font family and style available on the device.
-/// No hard-coded font names — the list comes from the OS.
+/// The full enumeration is **expensive** — it walks the OS font database —
+/// so we compute it lazily once and cache both the family list and the
+/// PostScript-name set for the lifetime of the process.
 enum InstalledFonts {
 
-    /// Every font family available on the system, sorted alphabetically.
-    static var familyNames: [String] {
+    // MARK: Cached storage
+
+    /// Every non-empty family, sorted. Computed once, lazily.
+    static let nonEmptyFamilies: [String] = {
+        let all: [String]
         #if os(iOS)
-        return UIFont.familyNames.sorted()
+        all = UIFont.familyNames
         #elseif os(macOS)
-        return NSFontManager.shared.availableFontFamilies.sorted()
+        all = NSFontManager.shared.availableFontFamilies
         #else
-        return []
+        all = []
         #endif
+        return all
+            .filter { !fontNamesUncached(in: $0).isEmpty }
+            .sorted()
+    }()
+
+    /// Set of every PostScript name on the device. `O(1)` membership test.
+    private static let installedPostScriptNames: Set<String> = {
+        Set(nonEmptyFamilies.flatMap { fontNamesUncached(in: $0) })
+    }()
+
+    /// Cached, sorted list of every PostScript name.
+    static let allFontNames: [String] = {
+        installedPostScriptNames.sorted()
+    }()
+
+    // MARK: Public API
+
+    /// Fast membership test. Use this instead of `allFontNames.contains(_:)`.
+    @inline(__always)
+    static func isInstalled(_ postScriptName: String) -> Bool {
+        installedPostScriptNames.contains(postScriptName)
     }
 
-    /// Every PostScript name within a given family.
+    /// PostScript names within a given family. Cached per family.
     /// These are the values accepted by `Font.custom(_:size:)`.
     static func fontNames(in family: String) -> [String] {
+        fontNamesCache[family] ?? {
+            let names = fontNamesUncached(in: family)
+            fontNamesCache[family] = names
+            return names
+        }()
+    }
+
+    private static var fontNamesCache: [String: [String]] = [:]
+
+    // MARK: Uncached primitives
+
+    private static func fontNamesUncached(in family: String) -> [String] {
         #if os(iOS)
         return UIFont.fontNames(forFamilyName: family).sorted()
         #elseif os(macOS)
@@ -93,14 +128,16 @@ enum InstalledFonts {
         #endif
     }
 
-    /// Families that actually contain at least one font — filters out empty entries.
-    static var nonEmptyFamilies: [String] {
-        familyNames.filter { !fontNames(in: $0).isEmpty }
-    }
-
-    /// A flat, deduplicated list of every PostScript name on the system.
-    static var allFontNames: [String] {
-        Array(Set(nonEmptyFamilies.flatMap { fontNames(in: $0) })).sorted()
+    /// Kept for callers that want raw family names (e.g. pickers that
+    /// filter themselves). Prefer `nonEmptyFamilies` in hot paths.
+    static var familyNames: [String] {
+        #if os(iOS)
+        return UIFont.familyNames.sorted()
+        #elseif os(macOS)
+        return NSFontManager.shared.availableFontFamilies.sorted()
+        #else
+        return []
+        #endif
     }
 }
 
@@ -110,7 +147,11 @@ enum InstalledFonts {
 final class TextConfig {
 
     // Font
-    var fontSize: Double
+    /// Percentage offset relative to the OS's current `.body` point size.
+    /// `0` = exactly system size. `+50` = 50% larger. `-25` = 25% smaller.
+    /// See `scaledPointSize(for:)` for how this composes.
+    var fontSizePercent: Double
+
     var useSystemFont: Bool
     var systemDesignKey: String       // Font.Design.storageKey
     var fontFamilyName: String        // e.g. "Avenir"
@@ -119,6 +160,7 @@ final class TextConfig {
     // Layout
     var lineSpacing: Double
     var wordSpacing: Double
+    var verseSpacing: Double
     var justify: Bool
 
     // Display toggles
@@ -133,13 +175,14 @@ final class TextConfig {
     var addedWordsStyleRaw: String
 
     init(
-        fontSize: Double = 18.0,
+        fontSizePercent: Double = 0,
         useSystemFont: Bool = true,
         systemDesign: Font.Design = .default,
         fontFamilyName: String = "",
         fontPostScriptName: String = "",
         lineSpacing: Double = 1.5,
         wordSpacing: Double = 1.5,
+        verseSpacing: Double = 1.5,
         justify: Bool = false,
         showRedWords: Bool = true,
         showStrongs: Bool = true,
@@ -149,13 +192,14 @@ final class TextConfig {
         showWordNotes: Bool = true,
         addedWordsStyle: AddedWordsStyle = .brackets
     ) {
-        self.fontSize = fontSize
+        self.fontSizePercent = fontSizePercent
         self.useSystemFont = useSystemFont
         self.systemDesignKey = systemDesign.storageKey
         self.fontFamilyName = fontFamilyName
         self.fontPostScriptName = fontPostScriptName
         self.lineSpacing = lineSpacing
         self.wordSpacing = wordSpacing
+        self.verseSpacing = verseSpacing
         self.justify = justify
         self.showRedWords = showRedWords
         self.showStrongs = showStrongs
@@ -180,19 +224,36 @@ final class TextConfig {
 
     // MARK: - Resolved font
 
-    /// The `Font` the reading view should render with.
-    /// Uses `Font.system` for the system-font axis, `Font.custom` for installed fonts.
-    var resolvedFont: Font {
+    /// The point size the reader should render at, given the current
+    /// Dynamic Type level. Composes:
+    ///
+    ///     systemBody × (1 + fontSizePercent/100)
+    ///
+    /// Clamped to `11...120` so the layout stays usable at the extremes.
+    @inline(__always)
+    func scaledPointSize(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        let systemBody = dynamicTypeSize.systemBodyPointSize
+        let multiplier = 1.0 + (fontSizePercent / 100.0)
+        let raw = systemBody * multiplier
+        return min(max(raw, 11), 120)
+    }
+
+    /// The `Font` the reading view should render with, given the current
+    /// Dynamic Type size. Uses `Font.system` on the system-font axis,
+    /// `Font.custom` for installed custom fonts.
+    @inline(__always)
+    func resolvedFont(for dynamicTypeSize: DynamicTypeSize) -> Font {
+        let size = scaledPointSize(for: dynamicTypeSize)
+
         if useSystemFont {
-            return .system(size: fontSize, design: systemDesign)
-        } else {
-            // Fall back to system if the stored name is empty or invalid.
-            guard !fontPostScriptName.isEmpty,
-                  InstalledFonts.allFontNames.contains(fontPostScriptName)
-            else {
-                return .system(size: fontSize, design: systemDesign)
-            }
-            return .custom(fontPostScriptName, size: fontSize)
+            return .system(size: size, design: systemDesign)
         }
+
+        guard !fontPostScriptName.isEmpty,
+              InstalledFonts.isInstalled(fontPostScriptName)
+        else {
+            return .system(size: size, design: systemDesign)
+        }
+        return .custom(fontPostScriptName, size: size)
     }
 }

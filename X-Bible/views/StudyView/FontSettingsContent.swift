@@ -10,10 +10,11 @@ import SwiftData
 
 struct FontSettingsContent: View {
     @EnvironmentObject private var textConfigVM: TextConfigViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         @Bindable var config = textConfigVM.config
-        
+
         Form {
             // MARK: - Font Selection Section
             Section("Font Style") {
@@ -31,13 +32,16 @@ struct FontSettingsContent: View {
                         get: { config.fontFamilyName },
                         set: { newFamily in
                             config.fontFamilyName = newFamily
-                            // Automatically select the first available style in the family
+                            // Auto-select the first available style in the family.
                             if let firstFont = InstalledFonts.fontNames(in: newFamily).first {
                                 config.fontPostScriptName = firstFont
+                            } else {
+                                config.fontPostScriptName = ""
                             }
                         }
                     )) {
                         Text("Select Family").tag("")
+                        // Cached static — no per-render font-DB walk.
                         ForEach(InstalledFonts.nonEmptyFamilies, id: \.self) { family in
                             Text(family).tag(family)
                         }
@@ -46,18 +50,40 @@ struct FontSettingsContent: View {
                     if !config.fontFamilyName.isEmpty {
                         Picker("Variant", selection: $config.fontPostScriptName) {
                             Text("Select Style").tag("")
-                            ForEach(InstalledFonts.fontNames(in: config.fontFamilyName), id: \.self) { postScriptName in
+                            ForEach(InstalledFonts.fontNames(in: config.fontFamilyName),
+                                    id: \.self) { postScriptName in
                                 Text(postScriptName).tag(postScriptName)
                             }
                         }
                     }
                 }
 
+                // ── Live preview, using the exact same font path as WordView.
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Size: \(Int(config.fontSize)) pt")
+                    Text("Preview")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Slider(value: $config.fontSize, in: 10...36, step: 1)
+
+                    Text("In the beginning was the Word")
+                        .font(config.resolvedFont(for: dynamicTypeSize))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 4)
+
+                // ── Size slider (percent-based).
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Size")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(sizeLabel)
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $config.fontSizePercent, in: -50...200, step: 5)
                 }
             }
 
@@ -77,7 +103,12 @@ struct FontSettingsContent: View {
                     Slider(value: $config.wordSpacing, in: 0.0...10.0, step: 0.5)
                 }
 
-                //Toggle("Justify Text", isOn: $config.justify)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Verse Spacing: \(String(format: "%.1f", config.verseSpacing))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Slider(value: $config.verseSpacing, in: 1.0...3.0, step: 0.05)
+                }
             }
 
             // MARK: - Display Toggles Section
@@ -98,14 +129,22 @@ struct FontSettingsContent: View {
 
             // MARK: - Reset Action
             Section {
-                Button(role: .destructive, action: {
+                Button(role: .destructive) {
                     textConfigVM.resetToDefaults()
-                }) {
+                } label: {
                     Text("Reset to Defaults")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Helpers
+
+    private var sizeLabel: String {
+        let pct = Int(textConfigVM.config.fontSizePercent)
+        if pct == 0 { return "System" }
+        return pct > 0 ? "+\(pct)%" : "\(pct)%"
     }
 }

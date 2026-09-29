@@ -10,7 +10,7 @@
 		AA0320AB2FD8F50C002F79BB /* XbibleEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA0320AA2FD8F50C002F79BB /* XbibleEngine */; };
 		AACD4D47306A97C100D6A388 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AACD4D0E306A95B800D6A388 /* WidgetKit.framework */; };
 		AACD4D48306A97C100D6A388 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AACD4D10306A95B800D6A388 /* SwiftUI.framework */; };
-		AACD4D57306A97C400D6A388 /* XBibleWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AACD4D46306A97C100D6A388 /* XBibleWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AACD4D57306A97C400D6A388 /* XBibleWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AACD4D46306A97C100D6A388 /* XBibleWidgetsExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -413,6 +413,7 @@
 		};
 		AACD4D56306A97C400D6A388 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = AACD4D45306A97C100D6A388 /* XBibleWidgetsExtension */;
 			targetProxy = AACD4D55306A97C400D6A388 /* PBXContainerItemProxy */;
 		};
