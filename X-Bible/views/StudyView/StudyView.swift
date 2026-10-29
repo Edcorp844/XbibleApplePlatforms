@@ -446,8 +446,8 @@ struct StudyView: View {
     private var iOSPrimaryToolbar: some ToolbarContent {
         if let activeBinding = activeTabBinding {
             switch activeBinding.wrappedValue.type {
-
-            // ── Bible — passage + module, plus trailing menu
+                
+                // ── Bible — passage + module, plus trailing menu
             case .bible:
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
@@ -466,7 +466,7 @@ struct StudyView: View {
                             .pickerStyle(.segmented)
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
-
+                            
                             if activePickerTab == 0 {
                                 bookPickerContent(for: activeBinding)
                             } else {
@@ -475,9 +475,9 @@ struct StudyView: View {
                         }
                     }
                 }
-
+                
                 ToolbarSpacer(.flexible, placement: .topBarLeading)
-
+                
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedModule.isEmpty
@@ -490,19 +490,29 @@ struct StudyView: View {
                         modulePickerContent(for: activeBinding)
                     }
                 }
-
+                
+                
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { viewModel.createNewTab(ofType: .search) } label: {
-                            Label("Search", systemImage: "magnifyingglass")
-                        }
-                        Button {
-                            showTweaksPopover = true
-                        } label: {
-                            Label("Font & Settings", systemImage: "textformat")
-                        }
+                    Button { viewModel.createNewTab(ofType: .search) } label: {
+                        Label("Search", systemImage: "magnifyingglass")
+                    }
+                }
+                
+                
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showTweaksPopover = true
                     } label: {
-                        Image(systemName: "ellipsis")
+                        Label("Font & Settings", systemImage: "textformat")
                     }
                     .adaptivePresentation(
                         isPresented: $showTweaksPopover,
@@ -513,8 +523,8 @@ struct StudyView: View {
                         FontSettingsContent()
                     }
                 }
-
-            // ── General Book — module + tree reference picker
+                
+                // ── General Book — module + tree reference picker
             case .generalBook:
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
@@ -528,9 +538,9 @@ struct StudyView: View {
                         modulePickerContent(for: activeBinding)
                     }
                 }
-
+                
                 ToolbarSpacer(.flexible, placement: .topBarLeading)
-
+                
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
                         label: activeBinding.wrappedValue.selectedGeneralBookNodeId == nil
@@ -543,19 +553,21 @@ struct StudyView: View {
                         generalBookTreePickerContent(for: activeBinding)
                     }
                 }
-
+                
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { viewModel.createNewTab(ofType: .search) } label: {
-                            Label("Search", systemImage: "magnifyingglass")
-                        }
-                        Button {
-                            showTweaksPopover = true
-                        } label: {
-                            Label("Font & Settings", systemImage: "textformat")
-                        }
+                    Button {
+                        showTweaksPopover = true
                     } label: {
-                        Image(systemName: "ellipsis")
+                        Label("Font & Settings", systemImage: "textformat")
                     }
                     .adaptivePresentation(
                         isPresented: $showTweaksPopover,
@@ -566,8 +578,7 @@ struct StudyView: View {
                         FontSettingsContent()
                     }
                 }
-
-            // ── Search — module + type, no trailing menu
+                // ── Search — module + type, no trailing menu
             case .search:
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
@@ -581,9 +592,9 @@ struct StudyView: View {
                         searchModulePickerContent(for: activeBinding)
                     }
                 }
-
+                
                 ToolbarSpacer(.flexible, placement: .topBarLeading)
-
+                
                 ToolbarItem(placement: .topBarLeading) {
                     PopoverButton(
                         label: viewModel.searchType.displayName,
@@ -594,8 +605,18 @@ struct StudyView: View {
                         searchTypePickerContent(for: activeBinding)
                     }
                 }
-
-            // ── Dictionary / Lexicon / Commentary / Parallel — title only
+                
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
+                
+                // ── Dictionary / Lexicon / Commentary / Parallel — title only
             case .dictionary:
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 6) {
@@ -605,7 +626,17 @@ struct StudyView: View {
                             .font(.headline)
                     }
                 }
-
+                
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
+                
             case .lexicon:
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 6) {
@@ -615,17 +646,91 @@ struct StudyView: View {
                             .font(.headline)
                     }
                 }
-
-            case .commentary:
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 6) {
-                        Image(systemName: TabType.commentary.icon)
-                            .foregroundStyle(TabType.commentary.tint)
-                        Text(TabType.commentary.displayName)
-                            .font(.headline)
+                
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
                     }
                 }
-
+                
+                // ── Commentary — module + passage pickers (matches macOS)  // ← UPDATED
+            case .commentary:
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedBook.isEmpty
+                        ? "Select Passage"
+                        : "\(activeBinding.wrappedValue.selectedBook) \(activeBinding.wrappedValue.selectedChapter)",
+                        title: "Select Passage",
+                        isPresented: $showBookPicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        VStack(spacing: 16) {
+                            Picker("Selection Mode", selection: $activePickerTab) {
+                                Text("Books").tag(0)
+                                Text("Chapters").tag(1)
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            
+                            if activePickerTab == 0 {
+                                bookPickerContent(for: activeBinding)
+                            } else {
+                                chapterPickerContent(for: activeBinding)
+                            }
+                        }
+                    }
+                }
+                
+                ToolbarSpacer(.flexible, placement: .topBarLeading)
+                
+                ToolbarItem(placement: .topBarLeading) {
+                    PopoverButton(
+                        label: activeBinding.wrappedValue.selectedCommentaryModule.isEmpty
+                        ? "Select Module"
+                        : activeBinding.wrappedValue.selectedCommentaryModule,
+                        title: "Commentaries",
+                        isPresented: $showModulePicker,
+                        bypassPopover: useSidebarOverlay
+                    ) {
+                        modulePickerContent(for: activeBinding)
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { viewModel.createNewTab(ofType: .search) } label: {
+                        Label("Search", systemImage: "magnifyingglass")
+                    }
+                }
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showTweaksPopover = true
+                    } label: {
+                        Label("Font & Settings", systemImage: "textformat")
+                    }
+                    .adaptivePresentation(
+                        isPresented: $showTweaksPopover,
+                        title: "Font & Settings",
+                        detents: [.large],
+                        popoverEdge: .top
+                    ) {
+                        FontSettingsContent()
+                    }
+                }
+                
             case .parallel:
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 6) {
@@ -635,11 +740,19 @@ struct StudyView: View {
                             .font(.headline)
                     }
                 }
+                if horizontalSizeClass == .regular{
+                    ToolbarSpacer(.flexible, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button{viewModel.showTabOverview.toggle()} label: {
+                            Label("Tabs", systemImage: "square.on.square")
+                                .symbolVariant(.none)
+                        }.badge(viewModel.tabs.count > 99 ? "99+" : "\(viewModel.tabs.count)")
+                    }
+                }
             }
         }
     }
 #endif
-
     // MARK: - macOS Custom Tabs
 
 #if os(macOS)

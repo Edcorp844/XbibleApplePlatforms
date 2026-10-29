@@ -6,7 +6,7 @@
 import Foundation
 
 enum SidebarItem: Hashable, CaseIterable, Equatable  {
-    case study, store, all, bible, tools, commentary, dictionary, glossary, lexicons, dailyDevotional, essays, generalBooks, unorthodox, bibleTimeline, audioBible, maps
+    case study, store, all, bible, tools, commentary, dictionary, glossary, lexicons, dailyDevotional, essays, generalBooks, unorthodox, bibleTimeline, audioBible, maps, storeSearch
     
     var title: String {
         switch self {
@@ -26,6 +26,7 @@ enum SidebarItem: Hashable, CaseIterable, Equatable  {
         case .bibleTimeline: return "Timeline"
         case .audioBible: return "Audio Bible"
         case .maps: return "Maps"
+        case .storeSearch: return "Store Search"
         }
     }
     
@@ -47,6 +48,7 @@ enum SidebarItem: Hashable, CaseIterable, Equatable  {
         case .bibleTimeline: return "calendar.day.timeline.left"
         case .audioBible: return "speaker.wave.2"
         case .maps: return "map"
+        case .storeSearch: return "magnifyingglass"
         }
     }
 }

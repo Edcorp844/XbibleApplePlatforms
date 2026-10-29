@@ -13,7 +13,9 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject var wrapper: SwordEngineWrapper
-    @EnvironmentObject var studyViewModel: StudyViewModel 
+    @EnvironmentObject var studyViewModel: StudyViewModel
+    @EnvironmentObject var storeViewModel: StoreViewModel
+
     
     private let coreAudioEngine: AudioEngine
     @StateObject private var audioViewModel: AudioBibleViewModel
@@ -62,46 +64,20 @@ struct ContentView: View {
         // ─────────────────────────────────────────────────────────────────
         ZStack(alignment: .bottom) {
             TabView(selection: $wrapper.selectedSidebarItem) {
-                if sizeClass == .regular {
-                    Tab(value: SidebarItem.all, role: .search) {
-                        DetailView(selection: .all, viewModel: audioViewModel)
-                    } label: {
-                        Label("New Tab", systemImage: "magnifyingglass")
-                    }
-                    
-                }
-                else{
-                    switch (wrapper.selectedSidebarItem){
-                    case .study:
+                if sizeClass == .compact {
+                    if wrapper.selectedSidebarItem == .study {
                         Tab(value: .none, role: .search) {
                         } label: {
                             Label("Tabs", systemImage: "square.on.square")
                                 .symbolVariant(.none)
-                               
+                            
                         }
                         .badge(studyViewModel.tabs.count > 99 ? "99+" : "\(studyViewModel.tabs.count)")
-                        
-                    default: Tab(value: SidebarItem.all, role: .search) {
-                        DetailView(selection: .all, viewModel: audioViewModel)
-                    } label: {
-                        Label("New Tab", systemImage: "magnifyingglass")
                     }
-                        
-                    }
-                    
                 }
                 
                 Tab(value: SidebarItem.study) {
                     DetailView(selection: .study, viewModel: audioViewModel)
-//                        .tabOverlay(isPresented: isFABExpanded){
-//                            GridTabView(onSelect: { tab in
-//                                NotificationCenter.default.post(name: .requestTabDuplication, object: nil)
-//                                isFABExpanded = false
-//                            }
-//                            )
-//                        } onDismiss: {
-//                            
-//                        }
                 } label: {
                     Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
                 }
@@ -185,7 +161,7 @@ struct ContentView: View {
                 wrapper.selectedSidebarItem = oldValue
                 DispatchQueue.main.async{
                     UITabBar.setAnimationsEnabled(true)
-                   // isFABExpanded.toggle()
+                    // isFABExpanded.toggle()
                     studyViewModel.showTabOverview.toggle()
                 }
             }
@@ -215,7 +191,7 @@ struct ContentView: View {
     // ─────────────────────────────────────────────────────────────────
     //  MAC SIDEBAR DEFINITION COMPONENT
     // ─────────────────────────────────────────────────────────────────
-    #if os(macOS)
+#if os(macOS)
     private var macOSTabView: some View {
         TabView(selection: $wrapper.selectedSidebarItem) {
             Tab(value: SidebarItem.study) {
@@ -259,7 +235,7 @@ struct ContentView: View {
         .onAppear { refreshEngineIfNeeded() }
         .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
     }
-    #endif
+#endif
     
     // MARK: - Logic Helper Blocks
     private func refreshEngineIfNeeded() {

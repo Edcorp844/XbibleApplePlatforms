@@ -9,71 +9,57 @@ struct LanguageSection: View {
     let count: Int
     let modules: [XbibleEngine.SwordModule]
     let bookViewBuilder: (XbibleEngine.SwordModule) -> AnyView
-    let isExpanded: Bool
-    let toggle: () -> Void
+
+    @State private var isExpanded = true
 
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerButton
-            
-            if isExpanded {
-                modulesScrollView
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .clipped()
-            }
-
-            Divider()
-                .padding(.horizontal, 20)
-                .opacity(0.3)
+        DisclosureGroup(isExpanded: $isExpanded) {
+            modulesScrollView
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+        } label: {
+            headerLabel
         }
-        .animation(.easeInOut, value: isExpanded)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 4)
+        .tint(.secondary)
     }
 
     // MARK: - Subviews
 
-    private var headerButton: some View {
-        Button(action: toggle) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Locale.current.localizedString(forLanguageCode: langCode) ?? langCode.uppercased())
-                        .font(.headline)
-                    Text("\(count) \(count == 1 ? "module" : "modules")")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+    private var headerLabel: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Locale.current.localizedString(forLanguageCode: langCode) ?? langCode.uppercased())
+                    .font(.headline)
+                    .foregroundStyle(.primary)
 
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                Text("\(count) \(count == 1 ? "module" : "modules")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 20)
-            .contentShape(Rectangle())
+
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     private var modulesScrollView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 20) {
-                ForEach(modules, id: \.compoundId){ module in
+            LazyHStack(spacing: 16) {
+                ForEach(modules, id: \.compoundId) { module in
                     bookViewBuilder(module)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .padding(.vertical, 4)
         }
     }
 }
 
-
 extension XbibleEngine.SwordModule {
     var compoundId: String {
-        return "\(source)-\(name)"
+        "\(source)-\(name)"
     }
 }

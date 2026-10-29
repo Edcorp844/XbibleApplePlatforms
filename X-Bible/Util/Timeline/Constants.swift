@@ -1,56 +1,30 @@
-//
-//  Constat.swift
-//  XBible
-//
-//  Created by Zoe Brooklyn on 4/29/26.
-//
-
 import SwiftUI
 
-struct TimelineUtils {
-    
-    // MARK: - Constants
-    
-    static let offsetTop: CGFloat = 50
-    static let rows: CGFloat = 24
-    static let rowHeight: CGFloat = 30
-    static let rowGap: CGFloat = 10
-    
-    static let scrollViewHeight: CGFloat = offsetTop + rows * (rowHeight + rowGap)
-    
-    /// Logic to calculate the Y position based on the row index
-    static func rowToPx(row: CGFloat) -> CGFloat {
-        return offsetTop + row * (rowHeight + rowGap)
+enum TimelineUtils {
+    static func yearLabel(_ year: Int64) -> String {
+        if year < 0 { return "\(-year) BC" }
+        if year == 0 { return "0" }
+        return "\(year) AD"
     }
-    
-    static func xForYear(_ year: Int, startYear: Int, pixelsPerYear: CGFloat) -> CGFloat {
-            return CGFloat(year - startYear) * pixelsPerYear
-        }
 
-    // MARK: - Helper Functions
-    
-    static func mapRange(
-        current: CGFloat,
-        fromMin: CGFloat,
-        fromMax: CGFloat,
-        toMin: CGFloat,
-        toMax: CGFloat
-    ) -> CGFloat {
-        return toMin + ((toMax - toMin) * (current - fromMin)) / (fromMax - fromMin)
+    static func rangeLabel(start: Int64, end: Int64) -> String {
+        start == end
+            ? yearLabel(start)
+            : "\(yearLabel(start)) – \(yearLabel(end))"
     }
-    
-    /// Generates the label for dates (BC/AD and prophetic eras) in English
+
     static func calculateLabel(start: Int, end: Int) -> String {
-        let absStart = abs(start)
-        let absEnd = abs(end)
-        let suffix = start < 0 ? " BC" : ""
-        
-        if start == end {
-            return "\(absStart)\(suffix)"
-        } else {
-            return "\(absStart)\(suffix) - \(absEnd)\(end < 0 ? " BC" : "")"
+        rangeLabel(start: Int64(start), end: Int64(end))
+    }
+
+    static func color(from hex: String, fallback: Color = .accentColor) -> Color {
+        let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard cleaned.count == 6, let value = UInt32(cleaned, radix: 16) else {
+            return fallback
         }
+        let r = Double((value >> 16) & 0xFF) / 255
+        let g = Double((value >> 8)  & 0xFF) / 255
+        let b = Double( value        & 0xFF) / 255
+        return Color(red: r, green: g, blue: b)
     }
 }
-
-

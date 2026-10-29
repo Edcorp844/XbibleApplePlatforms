@@ -15,24 +15,25 @@ struct StoreView: View {
 
     @EnvironmentObject var wrapper: SwordEngineWrapper
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @EnvironmentObject var viewModel: StoreViewModel
 
     // MARK: - State
-
-    @StateObject private var viewModel = StoreViewModel()
     @State private var selectedCategory: String = "All"
-    @State private var expandedLanguages: Set<String> = []
     @State private var showSourcePicker: Bool = false
     @State private var searchText: String = ""
+    @State private var moduleToShowDetails: XbibleEngine.SwordModule? = nil
+    @State private var showingSearch: Bool = false
 
     // MARK: - Body
 
     var body: some View {
         NavigationStack {
-            catalogStack
+            catalogContent
                 .navigationTitle("Store")
                 .searchable(
                     text: $searchText,
-                    placement: .toolbar,
+                    placement:  horizontalSizeClass == .regular ? .toolbar : .toolbarPrincipal,
                     prompt: "Search ..."
                 )
                 .refreshable {
@@ -49,28 +50,24 @@ struct StoreView: View {
                 .onChange(of: viewModel.modulesForCurrentSource) { _, _ in
                     updateSelectedCategory()
                 }
-                .onChange(of: searchText) { _, _ in
-                    // Auto-expand languages that still have matches
-                    expandedLanguages = Set(filteredLanguages.keys)
-                }
         }
     }
 
-    // MARK: - Catalog stack
+    // MARK: - Catalog
 
-    private var catalogStack: some View {
-        VStack(spacing: 0) {
-            ScrollView(.vertical) {
-                mainCatalogContent
-            }
+    private var catalogContent: some View {
+        ScrollView(.vertical) {
+            mainCatalogContent
+                .padding(.top, 8)
         }
-        .safeAreaInset(edge: .top) {
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .safeAreaInset(edge: .top, spacing: 0) {
             DynamicCategoryTabBar(
                 categories: availableCategories,
                 selection: $selectedCategory
             )
             .padding(.horizontal, 16)
-            .padding(.bottom, 4)
+            .padding(.vertical, 6)
         }
     }
 
@@ -97,10 +94,42 @@ struct StoreView: View {
                     count: languages[langCode]?.count ?? 0,
                     modules: languages[langCode] ?? [],
                     bookViewBuilder: { module in
-                        AnyView(bookView(for: module))
-                    },
-                    isExpanded: expandedLanguages.contains(langCode),
-                    toggle: { toggleLanguage(langCode) }
+                        let status = viewModel.installationStates[module.name] ?? .idle
+
+                        return AnyView(
+                            bookView(for: module)
+                                .contextMenu {
+                                    Button {
+                                        moduleToShowDetails = module
+                                    } label: {
+                                        Label("Show Details", systemImage: "info.circle")
+                                    }
+
+                                    Divider()
+
+                                    switch status {
+                                    case .idle, .cancelled:
+                                        Button {
+                                            viewModel.install(module: module, wrapper: wrapper)
+                                        } label: {
+                                            Label("Download", systemImage: "arrow.down.circle")
+                                        }
+                                    case .installed:
+                                        Button {
+                                            print("Open module: \(module.name)")
+                                        } label: {
+                                            Label("Open", systemImage: "book")
+                                        }
+                                    case .pending, .installing:
+                                        Button(role: .destructive) {
+                                            viewModel.cancelInstall(moduleName: module.name)
+                                        } label: {
+                                            Label("Cancel Download", systemImage: "xmark.circle")
+                                        }
+                                    }
+                                }
+                        )
+                    }
                 )
             }
         }
@@ -165,7 +194,6 @@ struct StoreView: View {
         if module.version.lowercased().contains(query) { return true }
         if module.delta.lowercased().contains(query) { return true }
 
-        // Features array
         if module.features.contains(where: { $0.lowercased().contains(query) }) {
             return true
         }
@@ -306,20 +334,11 @@ struct StoreView: View {
         }
     }
 
-    private func toggleLanguage(_ langCode: String) {
-        if expandedLanguages.contains(langCode) {
-            expandedLanguages.remove(langCode)
-        } else {
-            expandedLanguages.insert(langCode)
-        }
-    }
-
     private func updateSelectedCategory() {
         let cats = availableCategories
         if !cats.contains(selectedCategory) {
             selectedCategory = cats.first ?? "All"
         }
-        expandedLanguages = Set(filteredLanguages.keys)
     }
 
     private func refresh() async {
@@ -332,7 +351,7 @@ struct StoreView: View {
     }
 }
 
-// MARK: - Dynamic Tab Bar
+// MARK: - Dynamic Tab Bar (small + transparent)
 
 struct DynamicCategoryTabBar: View {
     let categories: [String]
@@ -340,14 +359,13 @@ struct DynamicCategoryTabBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 ForEach(categories, id: \.self) { category in
                     tabButton(for: category)
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
-        .frame(height: 38)
     }
 
     @ViewBuilder
@@ -355,28 +373,22 @@ struct DynamicCategoryTabBar: View {
         let isActive = selection == category
 
         Button {
-            withAnimation(.interpolatingSpring(duration: 0.3, bounce: 0)) {
+            withAnimation(.interpolatingSpring(duration: 0.28, bounce: 0)) {
                 selection = category
             }
         } label: {
-            HStack(spacing: 6) {
-                Text(category)
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                
-            }
-            .foregroundStyle(isActive ? .white : .primary)
-            .padding(.horizontal, isActive ? 16 : 12,)
-            .padding(.vertical, 4)
-            
-           
+            Text(category)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .foregroundStyle(isActive ? .white : .primary)
+                .padding(.horizontal, isActive ? 12 : 10)
+                .padding(.vertical, 5)
         }
         .background {
-            isActive ? Color.accentColor : .primary.opacity(0.3)
+            Capsule()
+                .fill(isActive ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.ultraThinMaterial))
         }
-        .buttonStyle(.glass)
-        .clipShape(Capsule())
-        
+        .buttonStyle(.plain)
     }
 }

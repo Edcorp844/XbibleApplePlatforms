@@ -31,6 +31,7 @@ struct X_BibleApp: App {
     /// `@StateObject` for this in `StudyView` — that would create a
     /// second instance and cause state drift.
     @StateObject private var studyViewModel = StudyViewModel()
+    @StateObject private var storeViewModel = StoreViewModel()
 
     @Environment(\.openWindow) private var openWindow
 
@@ -64,6 +65,7 @@ struct X_BibleApp: App {
                 ContentView()
                     .environmentObject(engineWrapper)
                     .environmentObject(studyViewModel)
+                    .environmentObject(storeViewModel)
             } else if let error = engineWrapper.errorMessage {
                 Text(error).foregroundColor(.red)
             } else {
@@ -72,6 +74,7 @@ struct X_BibleApp: App {
         }
         .environmentObject(engineWrapper)
         .environmentObject(studyViewModel)
+        .environmentObject(storeViewModel)
         .modelContainer(sharedModelContainer)
     }
 }

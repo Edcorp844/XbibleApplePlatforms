@@ -1,8 +1,12 @@
 import SwiftUI
+import XbibleEngine
+
+extension Period: @retroactive Identifiable {}
+extension Event: @retroactive Identifiable {}
 
 struct BibleTimelineView: View {
     @StateObject private var viewModel = TimelineViewModel()
-    @State private var selectedEvent: TimelineEvent?
+    @State private var selectedEvent: Event?
     @State private var activeYear: Int = -4100
     
     let pixelsPerYear: CGFloat = 1.5
@@ -131,23 +135,30 @@ struct BibleTimelineView: View {
         }
     }
     
+ 
     @ViewBuilder
     private func renderEvents() -> some View {
-        ForEach(viewModel.sections) { section in
-            let sectionColor = Color(hex: section.color)
-            ForEach(section.events) { event in
-                let duration = CGFloat(event.end - event.start)
-                let calculatedWidth = max(duration * pixelsPerYear, 20)
-                
-                TimelineItemView(event: event, sectionColor: sectionColor, width: calculatedWidth) { ev in
-                    self.selectedEvent = ev
-                }
-                .frame(width: calculatedWidth, height: rowHeight - 10)
-                .position(
-                    x: (CGFloat(event.start - timelineStartYear) * pixelsPerYear) + (calculatedWidth / 2),
-                    y: (CGFloat(event.row) * rowHeight) + 60
-                )
+        ForEach(viewModel.periods) { period in
+            let color = TimelineUtils.color(from: period.color)
+            ForEach(period.events) { event in
+                eventView(event: event, color: color)
             }
         }
+    }
+
+    @ViewBuilder
+    private func eventView(event: Event, color: Color) -> some View {
+        let width = max(CGFloat(event.end - event.start) * pixelsPerYear, 20)
+        let x = CGFloat(Int(event.start) - timelineStartYear) * pixelsPerYear + width / 2
+        let y = CGFloat(event.row) * rowHeight + 60
+
+        TimelineItemView(
+            event: event,
+            periodColor: color,
+            width: width,
+            onSelect: { self.selectedEvent = $0 }
+        )
+        .frame(width: width, height: rowHeight - 10)
+        .position(x: x, y: y)
     }
 }
