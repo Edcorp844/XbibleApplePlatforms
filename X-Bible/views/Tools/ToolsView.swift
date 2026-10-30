@@ -25,6 +25,17 @@ struct ToolsView: View {
                         .font(.caption)
                         .fontWeight(.semibold)
                 }
+                
+                Section {
+                    HStack {
+                        NavigationLink("Bible Timeline", destination: BibleTimelineView())
+                            .foregroundColor(.primary)
+                    }
+                } header: {
+                    Text("TIMELINE")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
             }
             #if os(iOS)
             .listStyle(.insetGrouped) // Delivers standard rounded card formatting automatically

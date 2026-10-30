@@ -33,13 +33,26 @@ struct StoreView: View {
                 .navigationTitle("Store")
                 .searchable(
                     text: $searchText,
-                    placement:  horizontalSizeClass == .regular ? .toolbar : .toolbarPrincipal,
+                    placement:  horizontalSizeClass == .regular ? .toolbar : .automatic,
                     prompt: "Search ..."
                 )
                 .refreshable {
                     await refresh()
                 }
                 .toolbar {
+                    ToolbarItem(placement: {
+                        #if os(macOS)
+                        .primaryAction
+                        #else
+                        .topBarTrailing
+                        #endif
+                    }()) {
+                        NavigationLink {
+                            AudioStoreView()
+                        } label: {
+                            Label("Audio Store", systemImage: "headphones")
+                        }
+                    }
                     ToolbarItem(placement: .primaryAction) {
                         sourcePickerButton
                     }
@@ -365,7 +378,15 @@ struct DynamicCategoryTabBar: View {
                 }
             }
             .padding(.vertical, 2)
+            .padding(.horizontal, 2)
         }
+        // These three lines fix the vertical scroll / refresh conflict
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { _ in }   // claims horizontal drags
+        )
     }
 
     @ViewBuilder

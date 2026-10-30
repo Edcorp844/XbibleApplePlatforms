@@ -57,14 +57,7 @@ struct AudioStoreView: View {
         }
         // 🚀 OPTIMIZATION: Explicit desktop layout toolstrip for direct reload action
         .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button(action: {
-                    Task { await viewModel.loadCatalog() }
-                }) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .help("Reload store inventory catalog")
-            }
+            
         }
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {

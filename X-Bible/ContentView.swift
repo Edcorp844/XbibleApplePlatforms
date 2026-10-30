@@ -16,13 +16,13 @@ struct ContentView: View {
     @EnvironmentObject var studyViewModel: StudyViewModel
     @EnvironmentObject var storeViewModel: StoreViewModel
 
-    
     private let coreAudioEngine: AudioEngine
     @StateObject private var audioViewModel: AudioBibleViewModel
     @State private var textConfigVM: TextConfigViewModel?
     
     @State private var expandMiniPlayer: Bool = false
     @State private var isFABExpanded: Bool = false
+    @State private var customization = TabViewCustomization()
     
     init() {
         let engine = AudioEngine()
@@ -49,88 +49,94 @@ struct ContentView: View {
     @ViewBuilder
     private var mainLayout: some View {
 #if os(macOS)
-        // ─────────────────────────────────────────────────────────────────
-        //  macOS HIERARCHICAL MATRIX (ZStack Wrapper Root Layout)
-        // ─────────────────────────────────────────────────────────────────
-        
+        // ─────────────────────────────────────────────
+        // macOS – keep floating mini player as before
+        // ─────────────────────────────────────────────
         macOSTabView
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: audioViewModel.selectedModule != nil)
             .onAppear { refreshEngineIfNeeded() }
-            .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
-        
+            .onChange(of: wrapper.isReady) { _, isReady in
+                if isReady { wrapper.refreshReadingEngine() }
+            }
 #else
-        // ─────────────────────────────────────────────────────────────────
-        //  iOS MOBILE ARCHITECTURE (ZStack Content Isolation)
-        // ─────────────────────────────────────────────────────────────────
-        ZStack(alignment: .bottom) {
-            TabView(selection: $wrapper.selectedSidebarItem) {
-                if sizeClass == .compact {
-                    if wrapper.selectedSidebarItem == .study {
-                        Tab(value: .none, role: .search) {
-                        } label: {
-                            Label("Tabs", systemImage: "square.on.square")
-                                .symbolVariant(.none)
-                            
-                        }
-                        .badge(studyViewModel.tabs.count > 99 ? "99+" : "\(studyViewModel.tabs.count)")
-                    }
-                }
-                
-                Tab(value: SidebarItem.study) {
-                    DetailView(selection: .study, viewModel: audioViewModel)
-                } label: {
-                    Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
-                }
-                
-                Tab(value: SidebarItem.store) {
-                    DetailView(selection: .store, viewModel: audioViewModel)
-                } label: {
-                    Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
-                }
-                
-                if sizeClass == .regular {
-                    TabSection("Tools") {
-                        Tab(value: SidebarItem.audioBible) {
-                            AudioBibleView(viewModel: audioViewModel)
-                        } label: {
-                            Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
-                        }
-                        Tab(value: SidebarItem.bibleTimeline) {
-                            DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
-                        } label: {
-                            Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
-                        }
-                    }
-                } else {
-                    Tab(value: SidebarItem.tools) {
-                        DetailView(selection: .tools, viewModel: audioViewModel)
+        // ─────────────────────────────────────────────
+        // iOS – use official bottom accessory
+        // ─────────────────────────────────────────────
+        TabView(selection: $wrapper.selectedSidebarItem) {
+            if sizeClass == .compact {
+                if wrapper.selectedSidebarItem == .study {
+                    Tab(value: .none, role: .search) {
                     } label: {
-                        Label(SidebarItem.tools.title, systemImage: SidebarItem.tools.icon)
+                        Label("Tabs", systemImage: "square.on.square")
+                            .symbolVariant(.none)
                     }
-                }
-                
-                if sizeClass == .regular {
-                    TabSection("Library") {
-                        ForEach(getAvailableCategories(), id: \.self) { item in
-                            Tab(item.title, systemImage: item.icon, value: item) {
-                                DetailView(selection: item, viewModel: audioViewModel)
-                            }
-                        }
-                    }
-                } else {
-                    Tab(value: SidebarItem.all) {
-                        DetailView(selection: .all, viewModel: audioViewModel)
-                    } label: {
-                        Label(SidebarItem.all.title, systemImage: SidebarItem.all.icon)
-                    }
+                    .badge(studyViewModel.tabs.count > 99 ? "99+" : "\(studyViewModel.tabs.count)")
                 }
             }
-            .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewStyle(.sidebarAdaptable)
-            .defaultAdaptableTabBarPlacement(.sidebar)
             
-            // Floating Overlay Mini-Player for Compact iPhones (Prevents TabView constraints crushing internal Toolbars)
-            if audioViewModel.selectedModule != nil && sizeClass == .compact {
+            Tab(value: SidebarItem.study) {
+                DetailView(selection: .study, viewModel: audioViewModel)
+            } label: {
+                Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
+            }
+            
+            Tab(value: SidebarItem.store) {
+                DetailView(selection: .store, viewModel: audioViewModel)
+            } label: {
+                Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
+            }
+            
+            if sizeClass == .regular {
+                TabSection("Tools") {
+                    Tab(value: SidebarItem.audioBible) {
+                        AudioBibleView(viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
+                    }
+                    .customizationID("com.xbible.audio")
+                    
+                    Tab(value: SidebarItem.bibleTimeline) {
+                        DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
+                    } label: {
+                        Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
+                    }
+                    .customizationID("com.xbible.timeline")
+                }
+                .customizationID("com.xbible.tools")
+            } else {
+                Tab(value: SidebarItem.tools) {
+                    DetailView(selection: .tools, viewModel: audioViewModel)
+                } label: {
+                    Label(SidebarItem.tools.title, systemImage: SidebarItem.tools.icon)
+                }
+                .customizationID("com.xbible.tools")
+            }
+            
+            if sizeClass == .regular {
+                TabSection("Library") {
+                    ForEach(getAvailableCategories(), id: \.self) { item in
+                        Tab(item.title, systemImage: item.icon, value: item) {
+                            DetailView(selection: item, viewModel: audioViewModel)
+                        }
+                        .customizationID("com.xbible.\(item.title.lowercased())")
+                    }
+                }
+                .customizationID("com.xbible.library")
+            } else {
+                Tab(value: SidebarItem.all) {
+                    DetailView(selection: .all, viewModel: audioViewModel)
+                } label: {
+                    Label(SidebarItem.all.title, systemImage: SidebarItem.all.icon)
+                }
+                .customizationID("com.xbible.library")
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewStyle(.sidebarAdaptable)
+        .defaultAdaptableTabBarPlacement(.sidebar)
+        // Official bottom accessory (iOS only)
+        .tabViewBottomAccessory {
+            if audioViewModel.selectedModule != nil {
                 AudioMiniPayer(
                     displayTitle: audioViewModel.selectedModule?.metadata?.displayTitle ?? "Audio Chapter",
                     activeLyricTitle: audioViewModel.currentActiveTitle,
@@ -143,25 +149,20 @@ struct ContentView: View {
                     audioViewModel.skipForward()
                 }
                 .onTapGesture {
-                    expandMiniPlayer.toggle()
+                    expandMiniPlayer = true
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .padding(.horizontal, 8)
-                // Positioned neatly directly over the native system bottom tab bar line
-                .padding(.bottom, 54)
-                .zIndex(10)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: audioViewModel.selectedModule != nil)
         .onAppear { refreshEngineIfNeeded() }
-        .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
+        .onChange(of: wrapper.isReady) { _, isReady in
+            if isReady { wrapper.refreshReadingEngine() }
+        }
         .onChange(of: wrapper.selectedSidebarItem) { oldValue, newValue in
             if newValue == nil {
                 UITabBar.setAnimationsEnabled(false)
                 wrapper.selectedSidebarItem = oldValue
-                DispatchQueue.main.async{
+                DispatchQueue.main.async {
                     UITabBar.setAnimationsEnabled(true)
-                    // isFABExpanded.toggle()
                     studyViewModel.showTabOverview.toggle()
                 }
             }
@@ -188,56 +189,73 @@ struct ContentView: View {
 #endif
     }
     
-    // ─────────────────────────────────────────────────────────────────
-    //  MAC SIDEBAR DEFINITION COMPONENT
-    // ─────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // macOS TabView + floating mini player
+    // ─────────────────────────────────────────────
 #if os(macOS)
     private var macOSTabView: some View {
-        TabView(selection: $wrapper.selectedSidebarItem) {
-            Tab(value: SidebarItem.study) {
-                DetailView(selection: .study, viewModel: audioViewModel)
-            } label: {
-                Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
-            }
-            
-            Tab(value: SidebarItem.store) {
-                DetailView(selection: .store, viewModel: audioViewModel)
-            } label: {
-                Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
-            }
-            
-            if sizeClass == .regular {
-                TabSection("Tools") {
-                    Tab(value: SidebarItem.audioBible) {
-                        AudioBibleView(viewModel: audioViewModel)
-                    } label: {
-                        Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
-                    }
-                    Tab(value: SidebarItem.bibleTimeline) {
-                        DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
-                    } label: {
-                        Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
-                    }
+        ZStack(alignment: .bottom) {
+            TabView(selection: $wrapper.selectedSidebarItem) {
+                Tab(value: SidebarItem.study) {
+                    DetailView(selection: .study, viewModel: audioViewModel)
+                } label: {
+                    Label(SidebarItem.study.title, systemImage: SidebarItem.study.icon)
                 }
-            }
-            
-            if sizeClass == .regular {
-                TabSection("Library") {
-                    ForEach(getAvailableCategories(), id: \.self) { item in
-                        Tab(item.title, systemImage: item.icon, value: item) {
-                            DetailView(selection: item, viewModel: audioViewModel)
+                
+                Tab(value: SidebarItem.store) {
+                    DetailView(selection: .store, viewModel: audioViewModel)
+                } label: {
+                    Label(SidebarItem.store.title, systemImage: SidebarItem.store.icon)
+                }
+                
+                if sizeClass == .regular {
+                    TabSection("Tools") {
+                        Tab(value: SidebarItem.audioBible) {
+                            AudioBibleView(viewModel: audioViewModel)
+                        } label: {
+                            Label(SidebarItem.audioBible.title, systemImage: SidebarItem.audioBible.icon)
+                        }
+                        .customizationID("com.xbible.audio")
+                        
+                        Tab(value: SidebarItem.bibleTimeline) {
+                            DetailView(selection: .bibleTimeline, viewModel: audioViewModel)
+                        } label: {
+                            Label(SidebarItem.bibleTimeline.title, systemImage: SidebarItem.bibleTimeline.icon)
+                        }
+                        .customizationID("com.xbible.timeline")
+                    }
+                    .customizationID("com.xbible.tools")
+                }
+                
+                if sizeClass == .regular {
+                    TabSection("Library") {
+                        ForEach(getAvailableCategories(), id: \.self) { item in
+                            Tab(item.title, systemImage: item.icon, value: item) {
+                                DetailView(selection: item, viewModel: audioViewModel)
+                            }
+                            .customizationID("com.xbible.\(item.title.lowercased())")
                         }
                     }
+                    .customizationID("com.xbible.library")
                 }
             }
+            .tabViewStyle(.sidebarAdaptable)
+            .tabViewCustomization($customization)
         }
-        .tabViewStyle(.sidebarAdaptable)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: audioViewModel.selectedModule != nil)
         .onAppear { refreshEngineIfNeeded() }
-        .onChange(of: wrapper.isReady) { _, isReady in if isReady { wrapper.refreshReadingEngine() } }
+        .onChange(of: wrapper.isReady) { _, isReady in
+            if isReady { wrapper.refreshReadingEngine() }
+        }
+        .sheet(isPresented: $expandMiniPlayer) {
+            AudioBibleArtWorkView(viewModel: audioViewModel)
+                .frame(minWidth: 400, minHeight: 500)
+        }
     }
 #endif
     
-    // MARK: - Logic Helper Blocks
+    // MARK: - Helpers
+    
     private func refreshEngineIfNeeded() {
         if wrapper.isReady {
             wrapper.refreshReadingEngine()
@@ -245,85 +263,10 @@ struct ContentView: View {
     }
     
     private func getAvailableCategories() -> [SidebarItem] {
-        return SidebarItem.allCases.filter { item in
+        SidebarItem.allCases.filter { item in
             let nonLibraryItems: [SidebarItem] = [.all, .study, .store, .bibleTimeline, .audioBible, .maps]
             guard !nonLibraryItems.contains(item) else { return false }
             return wrapper.installedModuleCategories.contains(item.title)
         }
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func tabOverlay<Content: View>(
-        isPresented: Bool,
-        @ViewBuilder content: @escaping () -> Content,
-        onDismiss: @escaping () -> ()
-    ) -> some View {
-        self.modifier(
-            TabOverlayModifier(
-                isPresented: isPresented,
-                viewContent: content,
-                onDismiss: onDismiss
-            )
-        )
-    }
-}
-
-struct TabOverlayModifier<ViewContent: View>: ViewModifier {
-    var isPresented: Bool
-    @ViewBuilder var viewContent: ViewContent
-    @State private var isViewAppearing = false
-    var onDismiss: () -> ()
-    func body(content: Content) -> some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay{
-                if isViewAppearing {
-                    GlassEffectContainer{
-                        if isPresented {
-                            Rectangle()
-                                .fill(.black.opacity(0.25))
-                                .containerShape(.rect)
-                                .onTapGesture {
-                                    onDismiss()
-                                }
-                                .ignoresSafeArea()
-                                .transition(.opacity)
-                        }
-                        
-                        if isPresented {
-                            viewContent
-                                .clipShape(.rect(cornerRadius: 30))
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 30))
-                                .frame(maxHeight: .infinity, alignment: .bottom)
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 10)
-                        }
-                    }
-                    .allowsHitTesting(isPresented)
-                    .animation(
-                        .interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: 0),
-                        value: isPresented
-                    )
-                }
-            }
-            .onAppear{
-                isViewAppearing = true
-            }
-            .onDisappear{
-                isViewAppearing = false
-            }
     }
 }

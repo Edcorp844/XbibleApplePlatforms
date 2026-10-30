@@ -52,7 +52,7 @@ struct DetailView: View {
         case .maps:             MapsView()
         case .glossary:         LibraryView(category: .glossary)
         default:
-            ContentUnavailableView("Feature Coming Soon", systemImage: "hammer")
+           ToolsView(audioViewModel: viewModel)
         }
     }
 }
