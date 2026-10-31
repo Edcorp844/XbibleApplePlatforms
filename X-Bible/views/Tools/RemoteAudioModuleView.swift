@@ -45,13 +45,13 @@ struct RemoteAudioModuleView: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     
-                    Text(module.language)
-                        .font(.caption)
-                        .foregroundColor(.accentColor)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(secondaryGroupedBackgroundColor))
+//                    Text(module.language)
+//                        .font(.caption)
+//                        .foregroundColor(.accentColor)
+//                        .lineLimit(1)
+//                        .padding(.horizontal, 10)
+//                        .padding(.vertical, 2)
+//                        .background(Capsule().fill(secondaryGroupedBackgroundColor))
                 }
                 
                 Spacer()
@@ -200,10 +200,10 @@ struct ModuleExpandedDetailPreview: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
-                    Text(module.language)
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.accentColor)
+//                    Text(module.language)
+//                        .font(.caption)
+//                        .fontWeight(.bold)
+//                        .foregroundColor(.accentColor)
                 }
             }
             

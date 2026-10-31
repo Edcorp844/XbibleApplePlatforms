@@ -200,35 +200,35 @@ struct AudioBibleViewMacOS: View {
     
     @ViewBuilder
     private var verseTextScrollView: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                ScrollViewReader { proxy in
-                    VStack(alignment: .leading, spacing: 28) {
-                        ForEach(viewModel.cachedChaptersList, id: \.stableId) { chapter in
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    ForEach(viewModel.cachedChaptersList, id: \.stableId) { chapter in
+                        VStack(alignment: .leading, spacing: 28) {
                             Text(chapter.title.uppercased())
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.2))
                                 .padding(.top, 14)
                             
-                            // Updated to read directly from the non-optional [AudioNode] collection
+                            // Read directly from the non-optional [AudioNode] collection
                             ForEach(chapter.children, id: \.stableId) { sentenceNode in
                                 verseRowButton(for: sentenceNode)
                             }
                         }
-                    }
-                    .onChange(of: viewModel.activeText) {
-                        let incomingText = viewModel.activeText
-                        if let targetNode = findMatchingNode(for: incomingText) {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                                proxy.scrollTo(targetNode.id, anchor: .center)
-                            }
-                        }
+                        .id(chapter.stableId)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.trailing, 10)
+                .padding(.bottom, 80)
             }
-            .padding(.horizontal, 16)
-            .padding(.trailing, 10)
-            .padding(.bottom, 80)
+            .onChange(of: viewModel.activeText) { _, incomingText in
+                guard let targetNode = findMatchingNode(for: incomingText) else { return }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                    // Use .stableId because that is what the ForEach uses as its ID
+                    proxy.scrollTo(targetNode.stableId, anchor: .center)
+                }
+            }
         }
     }
     
@@ -259,7 +259,7 @@ struct AudioBibleViewMacOS: View {
             .blur(radius: isActive ? 0 : 0.3)
         }
         .buttonStyle(.plain)
-        .id(sentenceNode.id)
+        .id(sentenceNode.stableId) // IMPORTANT: Matches the ForEach ID
     }
     
     @ViewBuilder

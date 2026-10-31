@@ -68,20 +68,6 @@
 			);
 			target = AA03207C2FD8F3F6002F79BB /* X-Bible */;
 		};
-		AAB071AB2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-Bible" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				AudioStoreView.swift,
-			);
-			target = AA03207C2FD8F3F6002F79BB /* X-Bible */;
-		};
-		AAB071AC2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-BibleTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				AudioStoreView.swift,
-			);
-			target = AA03208B2FD8F3F8002F79BB /* X-BibleTests */;
-		};
 		AACD4D5B306A97C400D6A388 /* Exceptions for "XBibleWidgets" folder in "XBibleWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -102,10 +88,6 @@
 		};
 		AA03208F2FD8F3F8002F79BB /* X-BibleTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				AAB071AB2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-Bible" target */,
-				AAB071AC2FE2AB7800E53F11 /* Exceptions for "X-BibleTests" folder in "X-BibleTests" target */,
-			);
 			path = "X-BibleTests";
 			sourceTree = "<group>";
 		};

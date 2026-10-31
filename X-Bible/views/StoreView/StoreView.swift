@@ -2,8 +2,6 @@
 //  StoreView.swift
 //  XBible
 //
-//  Created by Zoe Brooklyn on 5/23/26.
-//
 
 import SwiftUI
 import XbibleEngine
@@ -12,18 +10,14 @@ import SwiftData
 struct StoreView: View {
 
     // MARK: - Environment
-
     @EnvironmentObject var wrapper: SwordEngineWrapper
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject var viewModel: StoreViewModel
 
     // MARK: - State
-    @State private var selectedCategory: String = "All"
     @State private var showSourcePicker: Bool = false
-    @State private var searchText: String = ""
     @State private var moduleToShowDetails: XbibleEngine.SwordModule? = nil
-    @State private var showingSearch: Bool = false
 
     // MARK: - Body
 
@@ -32,8 +26,8 @@ struct StoreView: View {
             catalogContent
                 .navigationTitle("Store")
                 .searchable(
-                    text: $searchText,
-                    placement:  horizontalSizeClass == .regular ? .toolbar : .automatic,
+                    text: $viewModel.searchText,
+                    placement: horizontalSizeClass == .regular ? .toolbar : .automatic,
                     prompt: "Search ..."
                 )
                 .refreshable {
@@ -60,9 +54,6 @@ struct StoreView: View {
                 .onAppear {
                     viewModel.setup(modelContext: modelContext, wrapper: wrapper)
                 }
-                .onChange(of: viewModel.modulesForCurrentSource) { _, _ in
-                    updateSelectedCategory()
-                }
         }
     }
 
@@ -76,8 +67,11 @@ struct StoreView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .safeAreaInset(edge: .top, spacing: 0) {
             DynamicCategoryTabBar(
-                categories: availableCategories,
-                selection: $selectedCategory
+                categories: viewModel.availableCategories,
+                selection: Binding(
+                    get: { viewModel.selectedCategory },
+                    set: { viewModel.setCategory($0) }
+                )
             )
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
@@ -86,11 +80,11 @@ struct StoreView: View {
 
     @ViewBuilder
     private var mainCatalogContent: some View {
-        if viewModel.isLoading && viewModel.organizedModules.isEmpty {
+        if viewModel.isLoading && viewModel.filteredLanguages.isEmpty {
             ProgressView("Loading modules…")
                 .frame(maxWidth: .infinity)
                 .padding(.top, 80)
-        } else if filteredLanguages.isEmpty {
+        } else if viewModel.filteredLanguages.isEmpty {
             emptyState
         } else {
             languageList
@@ -98,120 +92,24 @@ struct StoreView: View {
     }
 
     private var languageList: some View {
-        let languages = filteredLanguages
+        let languages = viewModel.filteredLanguages
+        let keys = languages.keys.sorted()
 
         return VStack(alignment: .leading, spacing: 2) {
-            ForEach(languages.keys.sorted(), id: \.self) { langCode in
+            ForEach(keys, id: \.self) { langCode in
+                let modules = languages[langCode] ?? []
                 LanguageSection(
                     langCode: langCode,
-                    count: languages[langCode]?.count ?? 0,
-                    modules: languages[langCode] ?? [],
+                    count: modules.count,
+                    modules: modules,
                     bookViewBuilder: { module in
-                        let status = viewModel.installationStates[module.name] ?? .idle
-
-                        return AnyView(
-                            bookView(for: module)
-                                .contextMenu {
-                                    Button {
-                                        moduleToShowDetails = module
-                                    } label: {
-                                        Label("Show Details", systemImage: "info.circle")
-                                    }
-
-                                    Divider()
-
-                                    switch status {
-                                    case .idle, .cancelled:
-                                        Button {
-                                            viewModel.install(module: module, wrapper: wrapper)
-                                        } label: {
-                                            Label("Download", systemImage: "arrow.down.circle")
-                                        }
-                                    case .installed:
-                                        Button {
-                                            print("Open module: \(module.name)")
-                                        } label: {
-                                            Label("Open", systemImage: "book")
-                                        }
-                                    case .pending, .installing:
-                                        Button(role: .destructive) {
-                                            viewModel.cancelInstall(moduleName: module.name)
-                                        } label: {
-                                            Label("Cancel Download", systemImage: "xmark.circle")
-                                        }
-                                    }
-                                }
-                        )
+                        AnyView(bookView(for: module))
                     }
                 )
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
-        .animation(.easeInOut(duration: 0.15), value: searchText)
-    }
-
-    // MARK: - Dynamic Categories
-
-    private var availableCategories: [String] {
-        let keys = viewModel.organizedModules.keys.sorted()
-        return ["All"] + keys
-    }
-
-    /// Base data for the currently selected category (before search filter)
-    private var languagesForSelectedCategory: [String: [XbibleEngine.SwordModule]] {
-        if selectedCategory == "All" {
-            var merged: [String: [XbibleEngine.SwordModule]] = [:]
-            for (_, langDict) in viewModel.organizedModules {
-                for (lang, modules) in langDict {
-                    merged[lang, default: []].append(contentsOf: modules)
-                }
-            }
-            return merged
-        } else {
-            return viewModel.organizedModules[selectedCategory] ?? [:]
-        }
-    }
-
-    /// Final data shown in the list = category + search filter
-    private var filteredLanguages: [String: [XbibleEngine.SwordModule]] {
-        let base = languagesForSelectedCategory
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        guard !query.isEmpty else { return base }
-
-        var result: [String: [XbibleEngine.SwordModule]] = [:]
-
-        for (langCode, modules) in base {
-            let matching = modules.filter { module in
-                matches(module, query: query, languageCode: langCode)
-            }
-            if !matching.isEmpty {
-                result[langCode] = matching
-            }
-        }
-        return result
-    }
-
-    /// Search across name, description, category, language, source, version, delta, features
-    private func matches(
-        _ module: XbibleEngine.SwordModule,
-        query: String,
-        languageCode: String
-    ) -> Bool {
-        if module.name.lowercased().contains(query) { return true }
-        if module.description.lowercased().contains(query) { return true }
-        if module.category.lowercased().contains(query) { return true }
-        if module.language.lowercased().contains(query) { return true }
-        if languageCode.lowercased().contains(query) { return true }
-        if module.source.lowercased().contains(query) { return true }
-        if module.version.lowercased().contains(query) { return true }
-        if module.delta.lowercased().contains(query) { return true }
-
-        if module.features.contains(where: { $0.lowercased().contains(query) }) {
-            return true
-        }
-
-        return false
+        .animation(.easeInOut(duration: 0.15), value: viewModel.searchText)
     }
 
     // MARK: - Source Picker
@@ -219,7 +117,6 @@ struct StoreView: View {
     @ViewBuilder
     private var sourcePickerButton: some View {
         let label = viewModel.currentSource?.name ?? "Select Source"
-
         PopoverButton(
             label: label,
             title: "Select Source",
@@ -234,9 +131,7 @@ struct StoreView: View {
     private var sourcePickerContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if viewModel.availableSources.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                ProgressView().frame(maxWidth: .infinity).padding()
             } else {
                 ForEach(viewModel.availableSources, id: \.name) { source in
                     sourceRow(source)
@@ -244,17 +139,14 @@ struct StoreView: View {
             }
         }
         #if os(macOS)
-        .padding(12)
-        .frame(minWidth: 220)
+        .padding(12).frame(minWidth: 220)
         #else
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8).frame(maxWidth: .infinity)
         #endif
     }
 
     private func sourceRow(_ source: XbibleEngine.ModuleSource) -> some View {
         let isSelected = viewModel.currentSource?.name == source.name
-
         return Button {
             viewModel.selectSource(source, wrapper: wrapper)
             showSourcePicker = false
@@ -262,11 +154,9 @@ struct StoreView: View {
             HStack(spacing: 8) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-
                 Text(source.name)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.primary)
-
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
@@ -285,13 +175,13 @@ struct StoreView: View {
 
     private var emptyState: some View {
         Group {
-            if searchText.isEmpty {
+            if viewModel.searchText.isEmpty {
                 ContentUnavailableView("No Modules", systemImage: "magnifyingglass")
             } else {
                 ContentUnavailableView(
                     "No Results",
                     systemImage: "magnifyingglass",
-                    description: Text("No modules match “\(searchText)”")
+                    description: Text("No modules match “\(viewModel.searchText)”")
                 )
             }
         }
@@ -299,21 +189,50 @@ struct StoreView: View {
     }
 
     private func bookView(for module: XbibleEngine.SwordModule) -> some View {
-        let status = viewModel.installationStates[module.name] ?? .idle
+        let status = viewModel.status(for: module)
 
         return BookCardView(
             module: module,
             status: status,
             showActionButton: true,
             action: {
-                let currentStatus = viewModel.installationStates[module.name] ?? .idle
-                handleAction(for: module, status: currentStatus)
+                handleAction(for: module, status: viewModel.status(for: module))
             }
         )
         .overlay(alignment: .topTrailing) {
             sourceLabel(for: module.source)
         }
         .id("\(module.name)-\(statusID(status))")
+        .contextMenu {
+            Button {
+                moduleToShowDetails = module
+            } label: {
+                Label("Show Details", systemImage: "info.circle")
+            }
+
+            Divider()
+
+            switch status {
+            case .idle, .cancelled:
+                Button {
+                    viewModel.install(module: module, wrapper: wrapper)
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle")
+                }
+            case .installed:
+                Button {
+                    print("Open module: \(module.name)")
+                } label: {
+                    Label("Open", systemImage: "book")
+                }
+            case .pending, .installing:
+                Button(role: .destructive) {
+                    viewModel.cancelInstall(moduleName: module.name)
+                } label: {
+                    Label("Cancel Download", systemImage: "xmark.circle")
+                }
+            }
+        }
     }
 
     private func sourceLabel(for source: String) -> some View {
@@ -339,18 +258,11 @@ struct StoreView: View {
 
     private func statusID(_ status: InstallationStatus) -> String {
         switch status {
-        case .idle:       return "idle"
-        case .cancelled:  return "cancelled"
-        case .installed:  return "installed"
-        case .pending:    return "pending"
+        case .idle: return "idle"
+        case .cancelled: return "cancelled"
+        case .installed: return "installed"
+        case .pending: return "pending"
         case .installing: return "installing"
-        }
-    }
-
-    private func updateSelectedCategory() {
-        let cats = availableCategories
-        if !cats.contains(selectedCategory) {
-            selectedCategory = cats.first ?? "All"
         }
     }
 
@@ -364,7 +276,7 @@ struct StoreView: View {
     }
 }
 
-// MARK: - Dynamic Tab Bar (small + transparent)
+// MARK: - Dynamic Tab Bar (unchanged)
 
 struct DynamicCategoryTabBar: View {
     let categories: [String]
@@ -380,12 +292,10 @@ struct DynamicCategoryTabBar: View {
             .padding(.vertical, 2)
             .padding(.horizontal, 2)
         }
-        // These three lines fix the vertical scroll / refresh conflict
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .contentShape(Rectangle())
         .highPriorityGesture(
-            DragGesture(minimumDistance: 10)
-                .onChanged { _ in }   // claims horizontal drags
+            DragGesture(minimumDistance: 10).onChanged { _ in }
         )
     }
 
